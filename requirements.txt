@@ -1,3 +1,5 @@
 tenacity >= 4.4.0
-pandas >= 0.20.2
-slackclient >= 1.0.6
+pandas >= 0.20.3
+slackclient >= 1.0.7
+btfxwss >= 1.1.0
+
