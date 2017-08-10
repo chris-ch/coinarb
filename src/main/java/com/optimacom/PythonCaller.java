@@ -6,7 +6,7 @@ import org.python.util.PythonInterpreter;
 
 public class PythonCaller {
 
-    public static void main(String args[]) {
+    public static void main(String args[]) throws Exception {
 
         PythonInterpreter python = new PythonInterpreter();
 

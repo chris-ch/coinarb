@@ -2,4 +2,4 @@ bitfinex >= 0.2.6
 # tenacity >= 4.4.0
 # pandas >= 0.20.3
 # slackclient >= 1.0.7
-btfxwss >= 1.1.0
+# btfxwss >= 1.1.0
