@@ -6,40 +6,18 @@ import tenacity
 import time
 from btfxwss import BtfxWss
 import bitfinex
+import requests_cache
+from decimal import Decimal
 
-from arbitrage import scan_arbitrage_opportunities
+from arbitrage import scan_arbitrage_opportunities, create_pair_from_indirect, create_pair_from_direct, ForexQuote
 
 
-def parse_symbols(pairs):
+def parse_symbols_bitfinex(pairs):
     symbols = set()
-    for pair in pairs:
-        base_symbol = pair[:len(pair) // 2]
-        quote_symbol = pair[len(pair) // 2:]
-        symbols.add((base_symbol, quote_symbol))
+    for pair_code in pairs:
+        symbols.add(create_pair_from_indirect(pair_code))
 
     return symbols
-
-
-@tenacity.retry(wait=tenacity.wait_fixed(1), stop=tenacity.stop_after_attempt(1))
-def main(args):
-    bitfinex_client = bitfinex.Client()
-    pair_codes = bitfinex_client.symbols()
-    pairs = parse_symbols(pair_codes)
-
-    def order_book_l1(client):
-        def wrapped(pair_code):
-            result = client.order_book(pair_code)
-            bids = pandas.DataFrame(result['bids']).rename(columns={'amount': 'volume'})[['timestamp', 'price', 'volume']]
-            asks = pandas.DataFrame(result['asks']).rename(columns={'amount': 'volume'})[['timestamp', 'price', 'volume']]
-            if bids is None or asks is None:
-                return None, None
-
-            return bids.iloc[0], asks.iloc[0]
-
-        return wrapped
-
-    scan_arbitrage_opportunities(pairs, order_book_l1(bitfinex_client))
-    return
 
 
 def wss():
@@ -69,8 +47,38 @@ def wss():
     wss.stop()
 
 
+#@tenacity.retry(wait=tenacity.wait_fixed(1), stop=tenacity.stop_after_attempt(1))
+def main(args):
+    bitfinex_client = bitfinex.Client()
+    pair_codes = bitfinex_client.symbols()
+    pairs = parse_symbols_bitfinex(pair_codes)
+
+    def order_book_l1(client):
+        def wrapped(pair):
+            result = client.order_book(pair.to_indirect(separator=''))
+            result_bid = result['bids'][0]
+            result_ask = result['asks'][0]
+            bid = dict()
+            ask = dict()
+            bid['price'] = round(Decimal(result_bid['price']), 10)
+            ask['price'] = round(Decimal(result_ask['price']), 10)
+            bid['volume'] = round(Decimal(result_bid['amount']), 10)
+            ask['volume'] = round(Decimal(result_ask['amount']), 10)
+            timestamp = result_bid['timestamp']
+            return ForexQuote(timestamp, bid, ask)
+
+        return wrapped
+
+    results = scan_arbitrage_opportunities(pairs, order_book_l1(bitfinex_client), illimited_volume=True)
+    for trades, balances in results:
+        print(trades)
+        print(balances)
+
+    return
+
+
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
     logging.getLogger('requests').setLevel(logging.WARNING)
     file_handler = logging.FileHandler('update-nav-hist.log', mode='w')
     formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
@@ -83,4 +91,7 @@ if __name__ == '__main__':
     parser.add_argument('--secrets', type=str, help='configuration with secret connection data', default='secrets.json')
 
     args = parser.parse_args()
+    # DEBUGGING
+    requests_cache.install_cache('demo_cache')
+
     main(args)
