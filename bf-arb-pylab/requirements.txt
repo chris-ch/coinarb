@@ -1,4 +1,5 @@
 bitfinex >= 0.2.6
+requests_cache >= 0.4.13
 # tenacity >= 4.4.0
 # pandas >= 0.20.3
 # slackclient >= 1.0.7

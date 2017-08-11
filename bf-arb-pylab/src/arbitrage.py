@@ -4,149 +4,224 @@ import itertools
 
 import numpy
 import pandas
+from decimal import Decimal
 
 
-def trade_pair(pair_code, bid, ask, volume):
-    """
-    Computes the balance after the operation takes place.
-    Example:
-        XXLMXXBT 38092.21 0.000008210 0.000008340 121.618 --> With a volume of 1 we go long 0.000008210 XXBT and short 1 XXLM
+def create_pair_from_indirect(pair_code):
+    return CurrencyPair(pair_code[len(pair_code) // 2:], pair_code[:len(pair_code) // 2])
 
-    :param pair_code:
-    :param bid:
-    :param ask:
-    :param volume:
-    :return:
-    """
-    currency_first = pair_code[:4]
-    currency_second = pair_code[4:]
-    balance = {currency_first: 0, currency_second: 0}
-    trade = None
-    if volume > 0:
-        allowed_volume = min(volume, bid['volume'])
+
+def create_pair_from_direct(pair_code):
+    return CurrencyPair(pair_code[:len(pair_code) // 2], pair_code[len(pair_code) // 2:])
+
+
+class ForexQuote(object):
+
+    def __init__(self, timestamp, bid, ask):
+        self._timestamp = timestamp
+        self._bid = bid
+        self._ask = ask
+
+    @property
+    def timestamp(self):
+        return self._timestamp
+
+    @property
+    def bid(self):
+        return self._bid
+
+    @property
+    def ask(self):
+        return self._ask
+
+    def is_complete(self):
+        return self._bid is not None and self._ask is not None
+
+
+class CurrencyPair(object):
+    def __init__(self, base_currency_code, quote_currency_code):
+        """
+        The quotation EUR/USD 1.2500 means that one euro is exchanged for 1.2500 US dollars.
+        Here, EUR is the base currency and USD is the quote currency(counter currency).
+        :param base_currency_code: currency that is quoted
+        :param quote_currency_code: currency that is used as the reference
+        """
+        self._base_currency_code = base_currency_code
+        self._quote_currency_code = quote_currency_code
+
+    def buy(self, quote, volume, illimited_volume=False):
+        """
+        Computes the balance after the buy has taken place.
+        Example, provided volume is sufficient:
+            quote = EUR/USD <1.15, 1.16>, volume = +1 ---> Balances: EUR = +1, USD = -1.16
+
+        :param quote: ForexQuote instance
+        :param volume:
+        :param illimited_volume: emulates infinite liquidity
+        :return:
+        """
+        price = quote.ask['price']
+        if illimited_volume:
+            allowed_volume = volume
+
+        else:
+            allowed_volume = min(volume, quote.ask['volume'])
+
         capped = numpy.NaN
         if allowed_volume < volume:
             capped = allowed_volume
 
-        balance = {currency_first: allowed_volume * -1, currency_second: allowed_volume * bid['price']}
-        trade = {'direction': 'buy', 'pair': pair_code, 'quantity': allowed_volume, 'price': bid['price'],
-                 'capped': capped}
+        balance = {self.base: allowed_volume, self.quote: allowed_volume * price * -1}
+        trade = {'direction': 'buy', 'pair': repr(self), 'quantity': allowed_volume, 'price': price, 'capped': capped}
+        return balance, trade
 
-    elif volume < 0:
-        allowed_volume = min(abs(volume), ask['volume'])
+    def sell(self, quote, volume, illimited_volume=False):
+        """
+        Computes the balance after the sell has taken place.
+        Example, provided volume is sufficient:
+            quote = EUR/USD <1.15, 1.16>, volume = 1 ---> Balances: EUR = -1, USD = +1.15
+
+        :param quote: ForexQuote instance
+        :param volume:
+        :param illimited_volume: emulates infinite liquidity
+        :return:
+        """
+        volume = abs(volume)
+        price = quote.bid['price']
+        if illimited_volume:
+            allowed_volume = volume
+
+        else:
+            allowed_volume = min(volume, quote.bid['volume'])
+
         capped = numpy.NaN
-        if allowed_volume < abs(volume):
+        if allowed_volume < volume:
             capped = allowed_volume
 
-        balance = {currency_first: allowed_volume, currency_second: allowed_volume * ask['price'] * -1}
-        trade = {'direction': 'sell', 'pair': pair_code, 'quantity': allowed_volume, 'price': ask['price'],
-                 'capped': capped}
-
-    return balance, trade
+        balance = {self.base: allowed_volume * -1, self.quote: allowed_volume * price}
+        trade = {'direction': 'sell', 'pair': repr(self), 'quantity': allowed_volume * -1, 'price': price, 'capped': capped}
+        return balance, trade
 
 
-def buy_currency_using_pair(currency, volume, pair_code, bid, ask):
+    @property
+    def assets(self):
+        return {self._base_currency_code, self._quote_currency_code}
+
+    @property
+    def quote(self):
+        return self._quote_currency_code
+
+    @property
+    def base(self):
+        return self._base_currency_code
+
+    def to_direct(self, separator='/'):
+        return '{}{}{}'.format(self._base_currency_code, separator, self._quote_currency_code)
+
+    def to_indirect(self, separator='/'):
+        return '{}{}{}'.format(self._quote_currency_code, separator, self._base_currency_code)
+
+    def __repr__(self):
+        return '<{}/{}>'.format(self._base_currency_code, self._quote_currency_code)
+
+    def __hash__(self):
+        return hash(self._base_currency_code + self._quote_currency_code)
+
+    def __eq__(self, other):
+        return (self._base_currency_code == other._base_currency_code) and (self._quote_currency_code == other._quote_currency_code)
+
+    def __ne__(self, other):
+        return not self == other
+
+
+def buy_currency_using_pair(currency, volume, pair, quote, illimited_volume=False):
     """
 
     :param currency:
     :param volume: amount to buy denominated in currency
-    :param pair_code:
-    :param bid:
-    :param ask:
+    :param pair: CurrencyPair instance
+    :param quote:
+    :param illimited_volume: emulates infinite liquidity
     :return:
     """
-    logging.info('buying {} {} using {}'.format(volume, currency, pair_code))
-    if pair_code[4:] == currency:
+    logging.debug('buying {} {} using {}'.format(volume, currency, pair))
+    if currency == pair.base:
         # Direct quotation
-        logging.debug('direct quotation')
-        target_volume = volume / bid['price']
-        balance, performed_trade = trade_pair(pair_code, bid, ask, round(target_volume, 10))
+        balance, performed_trade = pair.buy(quote, volume, illimited_volume)
 
     else:
         # Indirect quotation
-        logging.debug('indirect quotation')
-        balance, performed_trade = trade_pair(pair_code, bid, ask, volume * -1)
+        target_volume = Decimal(volume) / quote.bid['price']
+        balance, performed_trade = pair.sell(quote, target_volume, illimited_volume)
 
     return balance, performed_trade
 
 
-def sell_currency_using_pair(currency, volume, pair_code, bid, ask):
+def sell_currency_using_pair(currency, volume, pair, quote, illimited_volume=False):
     """
 
     :param currency:
     :param volume: amount to buy denominated in currency
-    :param pair_code:
-    :param bid:
-    :param ask:
+    :param pair: CurrencyPair instance
+    :param quote:
+    :param illimited_volume: emulates infinite liquidity
     :return:
     """
-    logging.info('selling {} {} using {}'.format(volume, currency, pair_code))
-    if pair_code[4:] == currency:
+    logging.debug('selling {} {} using {}'.format(volume, currency, pair))
+    if currency == pair.base:
         # Direct quotation
-        logging.debug('direct quotation')
-        target_volume = -1 * volume / ask['price']
-        balance, performed_trade = trade_pair(pair_code, bid, ask, round(target_volume, 10))
+        balance, performed_trade = pair.sell(quote, volume, illimited_volume)
 
     else:
         # Indirect quotation
-        logging.debug('indirect quotation')
-        balance, performed_trade = trade_pair(pair_code, bid, ask, volume)
+        target_volume = Decimal(volume) / quote.ask['price']
+        balance, performed_trade = pair.buy(quote, target_volume, illimited_volume)
 
     return balance, performed_trade
 
 
-def calculate_arbitrage_opportunity(pair_1, pair_bid_1, pair_ask_1, pair_2, pair_bid_2, pair_ask_2, pair_3, pair_bid_3,
-                                    pair_ask_3, skip_capped=True):
+def calculate_arbitrage_opportunity(pair_1, quote_1, pair_2, quote_2, pair_3, quote_3, skip_capped=True, illimited_volume=False):
     """
 
     :param pair_1:
-    :param pair_bid_1:
-    :param pair_ask_1:
+    :param quote_1:
     :param pair_2:
-    :param pair_bid_2:
-    :param pair_ask_2:
+    :param quote_2:
     :param pair_3:
-    :param pair_bid_3:
-    :param pair_ask_3:
+    :param quote_3:
     :param skip_capped:
+    :param illimited_volume: emulates infinite liquidity
     :return: (trades, balances)
     """
     pairs = [pair_1, pair_2, pair_3]
-    pair_bids = [pair_bid_1, pair_bid_2, pair_bid_3]
-    pair_asks = [pair_ask_1, pair_ask_2, pair_ask_3]
-    results = list()
+    quotes = [quote_1, quote_2, quote_3]
+    opportunities = list()
     for first, second, third in itertools.permutations([0, 1, 2]):
-        currency_initial = pairs[first][4:]
-        initial_bid = pair_bids[first]
-        initial_ask = pair_asks[first]
-        if currency_initial in pairs[second]:
+        currency_initial = pairs[first].quote
+        initial_quote = quotes[first]
+        if currency_initial in pairs[second].assets:
             next_pair = pairs[second]
-            next_bid = pair_bids[second]
-            next_ask = pair_asks[second]
+            next_quote = quotes[second]
             final_pair = pairs[third]
-            final_bid = pair_bids[third]
-            final_ask = pair_asks[third]
+            final_quote = quotes[third]
 
         else:
             next_pair = pairs[third]
-            next_bid = pair_bids[third]
-            next_ask = pair_asks[third]
+            next_quote = quotes[third]
             final_pair = pairs[second]
-            final_bid = pair_bids[second]
-            final_ask = pair_asks[second]
+            final_quote = quotes[second]
 
-        if next_pair[:len(next_pair) // 2] != currency_initial:
-            currency_next = next_pair[:len(next_pair) // 2]
+        if next_pair.base != currency_initial:
+            currency_next = next_pair.base
 
         else:
-            currency_next = next_pair[len(next_pair) // 2:]
+            currency_next = next_pair.quote
 
-        balance_initial, trade_initial = buy_currency_using_pair(currency_initial, 1, pairs[first], initial_bid,
-                                                                 initial_ask)
+        balance_initial, trade_initial = buy_currency_using_pair(currency_initial, 1, pairs[first], initial_quote, illimited_volume)
         balance_next, trade_next = sell_currency_using_pair(currency_initial, balance_initial[currency_initial],
-                                                            next_pair, next_bid, next_ask)
+                                                            next_pair, next_quote, illimited_volume)
         balance_final, trade_final = sell_currency_using_pair(currency_next, balance_next[currency_next], final_pair,
-                                                              final_bid, final_ask)
+                                                              final_quote, illimited_volume)
 
         balance1_series = pandas.Series(balance_initial, name='initial')
         balance2_series = pandas.Series(balance_next, name='next')
@@ -154,63 +229,70 @@ def calculate_arbitrage_opportunity(pair_1, pair_bid_1, pair_ask_1, pair_2, pair
         balances = pandas.concat([balance1_series, balance2_series, balance3_series], axis=1)
         trades_df = pandas.DataFrame([trade_initial, trade_next, trade_final])
         if not skip_capped or trades_df['capped'].count() == 0:
-            results.append((trades_df, balances.sum(axis=1)))
+            logging.info('adding new opportunity:\n{}'.format(trades_df))
+            logging.info('resulting balances:\n{}'.format(balances.sum(axis=1)))
+            opportunities.append((trades_df, balances.sum(axis=1)))
 
-    return results
+        else:
+            logging.info('no opportunity')
+
+    return opportunities
 
 
-def scan_arbitrage_opportunities(pairs, order_book_callbak):
+def check_legs(common_leg, leg_pair1, leg_pair2, pairs, order_book_callbak, illimited_volume):
+    """
+
+    :param common_leg:
+    :param leg_pair1:
+    :param leg_pair2:
+    :param pairs: set of CurrencyPair instances
+    :param order_book_callbak: retrieves quote for given CurrencyPair instance
+    :param illimited_volume: emulates infinite liquidity
+    :return:
+    """
+    logging.debug('checking legs: {}, {}, {}'.format(common_leg, leg_pair1, leg_pair2))
+    common_pair = CurrencyPair(leg_pair1, leg_pair2)
+    indirect_pair_1 = CurrencyPair(leg_pair1, common_leg)
+    indirect_pair_2 = CurrencyPair(leg_pair2, common_leg)
+
+    if pairs.issuperset({common_pair, indirect_pair_1, indirect_pair_2}):
+        logging.info('trying pair {} with {} and {}'.format(common_pair, indirect_pair_1, indirect_pair_2))
+        common_quote = order_book_callbak(common_pair)
+        indirect_quote_1 = order_book_callbak(indirect_pair_1)
+        indirect_quote_2 = order_book_callbak(indirect_pair_2)
+        complete_data = common_quote.is_complete() and indirect_quote_1.is_complete() and indirect_quote_2.is_complete()
+        if complete_data:
+            opportunities = calculate_arbitrage_opportunity(common_pair, common_quote,
+                                                              indirect_pair_1, indirect_quote_1,
+                                                              indirect_pair_2, indirect_quote_2, illimited_volume)
+            return opportunities
+
+    else:
+        logging.debug('incompatible combination: {}, {}, {} not in {}'.format(common_pair, indirect_pair_1, indirect_pair_2, pairs))
+        return None
+
+
+def scan_arbitrage_opportunities(pairs, order_book_callbak, illimited_volume):
     """
     Scanning arbitrage opportunities over the indicated pairs.
 
-    :param pairs: set of (base code, quote code)
+    :param pairs: set of CurrencyPair instances
     :param order_book_callbak:
+    :param illimited_volume: emulates infinite liquidity
     :return:
     """
+    pairs = set(pairs)
     assets = set()
-    for base_code, quote_code in pairs:
-        assets.add(base_code)
-        assets.add(quote_code)
+    for pair in pairs:
+        assets.update(pair.assets)
 
-    pair_codes = {(base_code + quote_code) for base_code, quote_code in pairs}
     logging.info('available pairs ({}): {}'.format(len(pairs), pairs))
     logging.info('available assets ({}): {}'.format(len(assets), assets))
     results = list()
-    for common_leg in assets:
-        for leg_pair1 in assets:
-            if leg_pair1 == common_leg:
-                continue
-
-            for leg_pair2 in assets:
-                if leg_pair2 == common_leg or leg_pair2 == leg_pair1:
-                    continue
-
-                logging.debug('checking legs: {}, {}, {}'.format(leg_pair1, common_leg, leg_pair2))
-
-                direct_pair = leg_pair1 + leg_pair2
-                indirect_pair_1 = leg_pair1 + common_leg
-                indirect_pair_2 = leg_pair2 + common_leg
-                if pair_codes.issuperset({direct_pair, indirect_pair_1, indirect_pair_2}):
-                    logging.info('trying pair {} with {} and {}'.format(direct_pair, indirect_pair_1, indirect_pair_2))
-                    direct_bid, direct_ask = order_book_callbak(direct_pair)
-                    if direct_bid is None or direct_ask is None:
-                        continue
-
-                    indirect_bid_1, indirect_ask_1 = order_book_callbak(indirect_pair_1)
-                    if indirect_bid_1 is None or indirect_ask_1 is None:
-                        continue
-
-                    indirect_bid_2, indirect_ask_2 = order_book_callbak(indirect_pair_2)
-                    if indirect_bid_2 is None or indirect_ask_2 is None:
-                        continue
-
-                    arbitrage_ratio = calculate_arbitrage_opportunity(direct_pair, direct_bid, direct_ask,
-                                                                      indirect_pair_1, indirect_bid_1, indirect_ask_1,
-                                                                      indirect_pair_2, indirect_bid_2, indirect_ask_2)
-
-                    results.append(arbitrage_ratio)
-
-                else:
-                    logging.debug('no combination found for {}, {}, {}'.format(pairs, direct_pair, indirect_pair_1, indirect_pair_2))
+    itertools.permutations(())
+    for common_leg, leg_pair1, leg_pair2 in itertools.permutations(assets, 3):
+        opportunities = check_legs(common_leg, leg_pair1, leg_pair2, pairs, order_book_callbak, illimited_volume)
+        if opportunities is not None and len(opportunities) > 0:
+            results += opportunities
 
     return results
