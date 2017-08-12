@@ -236,37 +236,51 @@ def calculate_arbitrage_opportunity(pair_1, quote_1, pair_2, quote_2, pair_3, qu
     return opportunities
 
 
-def check_legs(common_leg, leg_pair1, leg_pair2, pairs, order_book_callbak, illimited_volume):
+def iterate_strategies(pairs):
+    """
+    Finds suitable strategies for given pairs.
+    :param pairs: set of CurrencyPair instances
+    :return: strategy (common_pair, indirect_pair_1, indirect_pair_2)
+    """
+    assets = set()
+    for pair in pairs:
+        assets.update(pair.assets)
+
+    logging.info('available assets ({}): {}'.format(len(assets), assets))
+    for common_leg, leg_pair1, leg_pair2 in itertools.permutations(assets, 3):
+        logging.debug('checking legs: {}, {}, {}'.format(common_leg, leg_pair1, leg_pair2))
+        common_pair = CurrencyPair(leg_pair1, leg_pair2)
+        indirect_pair_1 = CurrencyPair(leg_pair1, common_leg)
+        indirect_pair_2 = CurrencyPair(leg_pair2, common_leg)
+
+        if pairs.issuperset({common_pair, indirect_pair_1, indirect_pair_2}):
+            yield common_pair, indirect_pair_1, indirect_pair_2
+
+        else:
+            logging.debug('incompatible combination: {}, {}, {} not in {}'.format(common_pair, indirect_pair_1, indirect_pair_2, pairs))
+            continue
+
+
+def check_legs(common_pair, indirect_pair_1, indirect_pair_2, order_book_callbak, illimited_volume):
     """
 
-    :param common_leg:
-    :param leg_pair1:
-    :param leg_pair2:
-    :param pairs: set of CurrencyPair instances
+    :param common_pair:
+    :param indirect_pair_1:
+    :param indirect_pair_2:
     :param order_book_callbak: retrieves quote for given CurrencyPair instance
     :param illimited_volume: emulates infinite liquidity
     :return:
     """
-    logging.debug('checking legs: {}, {}, {}'.format(common_leg, leg_pair1, leg_pair2))
-    common_pair = CurrencyPair(leg_pair1, leg_pair2)
-    indirect_pair_1 = CurrencyPair(leg_pair1, common_leg)
-    indirect_pair_2 = CurrencyPair(leg_pair2, common_leg)
-
-    if pairs.issuperset({common_pair, indirect_pair_1, indirect_pair_2}):
-        logging.info('trying pair {} with {} and {}'.format(common_pair, indirect_pair_1, indirect_pair_2))
-        common_quote = order_book_callbak(common_pair)
-        indirect_quote_1 = order_book_callbak(indirect_pair_1)
-        indirect_quote_2 = order_book_callbak(indirect_pair_2)
-        complete_data = common_quote.is_complete() and indirect_quote_1.is_complete() and indirect_quote_2.is_complete()
-        if complete_data:
-            opportunities = calculate_arbitrage_opportunity(common_pair, common_quote,
-                                                              indirect_pair_1, indirect_quote_1,
-                                                              indirect_pair_2, indirect_quote_2, illimited_volume)
-            return opportunities
-
-    else:
-        logging.debug('incompatible combination: {}, {}, {} not in {}'.format(common_pair, indirect_pair_1, indirect_pair_2, pairs))
-        return None
+    logging.info('trying pair {} with {} and {}'.format(common_pair, indirect_pair_1, indirect_pair_2))
+    common_quote = order_book_callbak(common_pair)
+    indirect_quote_1 = order_book_callbak(indirect_pair_1)
+    indirect_quote_2 = order_book_callbak(indirect_pair_2)
+    complete_data = common_quote.is_complete() and indirect_quote_1.is_complete() and indirect_quote_2.is_complete()
+    if complete_data:
+        opportunities = calculate_arbitrage_opportunity(common_pair, common_quote,
+                                                          indirect_pair_1, indirect_quote_1,
+                                                          indirect_pair_2, indirect_quote_2, illimited_volume)
+        return opportunities
 
 
 def scan_arbitrage_opportunities(pairs, order_book_callbak, illimited_volume):
@@ -279,16 +293,10 @@ def scan_arbitrage_opportunities(pairs, order_book_callbak, illimited_volume):
     :return:
     """
     pairs = set(pairs)
-    assets = set()
-    for pair in pairs:
-        assets.update(pair.assets)
-
     logging.info('available pairs ({}): {}'.format(len(pairs), pairs))
-    logging.info('available assets ({}): {}'.format(len(assets), assets))
     results = list()
-    itertools.permutations(())
-    for common_leg, leg_pair1, leg_pair2 in itertools.permutations(assets, 3):
-        opportunities = check_legs(common_leg, leg_pair1, leg_pair2, pairs, order_book_callbak, illimited_volume)
+    for common_pair, indirect_pair_1, indirect_pair_2 in iterate_strategies(pairs):
+        opportunities = check_legs(common_pair, indirect_pair_1, indirect_pair_2, order_book_callbak, illimited_volume)
         if opportunities is not None and len(opportunities) > 0:
             results += opportunities
 
