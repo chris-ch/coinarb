@@ -1,6 +1,5 @@
 import logging
 from functools import total_ordering
-from typing import List
 
 import numpy
 import itertools
@@ -30,10 +29,6 @@ class ArbitrageStrategy(object):
             self._pair3: ForexQuote(None, None, None)
         }
 
-    @property
-    def pairs(self):
-        return tuple(sorted([self._pair1, self._pair2, self._pair3]))
-
     def __repr__(self):
         return '[{},{},{}]'.format(*self.pairs)
 
@@ -48,6 +43,10 @@ class ArbitrageStrategy(object):
 
     def __le__(self, other):
         return repr(self) <= repr(other)
+
+    @property
+    def pairs(self):
+        return tuple(sorted([self._pair1, self._pair2, self._pair3]))
 
     def update_quotes(self, order_book_callbak):
         """
@@ -134,7 +133,7 @@ class ArbitrageStrategy(object):
                 logging.info('adding new opportunity:\n{}'.format(trades_df))
                 logging.info('resulting balances:\n{}'.format(balances_by_currency))
                 logging.info('remaining {} {}'.format(remainder, pair1.base))
-                opportunities.append((trades_df, {'remainder': remainder, 'currency': pair1.base}))
+                opportunities.append((trades_df, {'remainder': round(Decimal(remainder), 10), 'currency': pair1.base}))
 
             else:
                 logging.info('no opportunity')
@@ -253,6 +252,21 @@ class CurrencyPair(object):
             balance, performed_trade = self.buy(quote, target_volume, illimited_volume)
 
         return balance, performed_trade
+
+    def convert(self, currency, amount, quote):
+        if currency == self.base:
+            destination_currency = self.quote
+
+        else:
+            destination_currency = self.base
+
+        if amount >= 0:
+            result = self.sell_currency(currency, amount, quote, illimited_volume=True)
+            return abs(result[0][destination_currency])
+
+        else:
+            result = self.buy_currency(currency, abs(amount), quote, illimited_volume=True)
+            return abs(result[0][destination_currency]) * -1
 
     @property
     def assets(self):

@@ -98,7 +98,6 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         self.assertEqual(strategy, ArbitrageStrategy(CurrencyPair('btc', 'eth'), CurrencyPair('usd', 'btc'),
                                                      CurrencyPair('usd', 'eth')))
 
-
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
     unittest.main()

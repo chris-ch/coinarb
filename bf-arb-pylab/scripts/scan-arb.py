@@ -12,7 +12,7 @@ import requests_cache
 from decimal import Decimal
 
 from arbitrage import scan_arbitrage_opportunities, parse_pair_from_indirect, create_strategies, parse_strategy
-from arbitrage.entities import ForexQuote
+from arbitrage.entities import ForexQuote, CurrencyPair
 
 
 def parse_symbols_bitfinex(pairs):
@@ -50,6 +50,38 @@ def wss():
     wss.stop()
 
 
+class CurrencyConverter(object):
+    def __init__(self, reference_currency, pair_codes, order_book_callback):
+        self._reference_currency = reference_currency
+        self._pair_codes = pair_codes
+        self._order_book_callback = order_book_callback
+
+    @property
+    def reference_currency(self):
+        return self._reference_currency
+
+    @property
+    def pairs(self):
+        return self._pair_codes
+
+    def exchange(self, currency, amount):
+        if currency == self.reference_currency:
+            return amount
+
+        target_pair = None
+        if currency + self.reference_currency in self.pairs:
+            target_pair = CurrencyPair(self.reference_currency, currency)
+
+        elif self.reference_currency + currency in self.pairs:
+            target_pair = CurrencyPair(currency, self.reference_currency)
+
+        if target_pair is None:
+            raise LookupError('unable to find suitable pair for converting {} into {}'.format(currency, self.reference_currency))
+
+        quote = self._order_book_callback(target_pair)
+        return target_pair.convert(currency, amount, quote)
+
+
 def main(args):
     if args.strategies:
         strategies_filename = os.path.abspath(args.strategies)
@@ -67,7 +99,17 @@ def main(args):
                 strategies.append(parse_strategy(line))
 
     def order_book_l1(client):
+        """
+        Creates a function returning a quote for a given currency pair.
+        :param client:
+        :return:
+        """
         def wrapped(pair):
+            """
+
+            :param pair: CurrencyPair instance
+            :return:
+            """
             result = client.order_book(pair.to_indirect(separator=''))
             result_bid = result['bids'][0]
             result_ask = result['asks'][0]
@@ -83,16 +125,20 @@ def main(args):
         return wrapped
 
     bitfinex_client = bitfinex.Client()
+    pair_codes = bitfinex_client.symbols()
+    converter = CurrencyConverter('btc', pair_codes, order_book_l1(bitfinex_client))
     results = scan_arbitrage_opportunities(strategies, order_book_l1(bitfinex_client), illimited_volume=True)
     for trades, balances in results:
-        print(trades)
-        print(balances)
+        bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
+        if bitcoin_amount > 0:
+            logging.info('residual value: {}'.format(bitcoin_amount))
+            logging.info('trades:\n{}'.format(trades))
 
     return
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
     logging.getLogger('requests').setLevel(logging.WARNING)
     file_handler = logging.FileHandler('scan-arb.log', mode='w')
     formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
