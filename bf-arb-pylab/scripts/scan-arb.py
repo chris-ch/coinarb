@@ -1,6 +1,9 @@
 import argparse
 import logging
 
+import os
+
+import sys
 import tenacity
 import time
 from btfxwss import BtfxWss
@@ -8,7 +11,7 @@ import bitfinex
 import requests_cache
 from decimal import Decimal
 
-from arbitrage import scan_arbitrage_opportunities, parse_pair_from_indirect, create_strategies
+from arbitrage import scan_arbitrage_opportunities, parse_pair_from_indirect, create_strategies, parse_strategy
 from arbitrage.entities import ForexQuote
 
 
@@ -47,11 +50,21 @@ def wss():
     wss.stop()
 
 
-#@tenacity.retry(wait=tenacity.wait_fixed(1), stop=tenacity.stop_after_attempt(1))
 def main(args):
-    bitfinex_client = bitfinex.Client()
-    pair_codes = bitfinex_client.symbols()
-    pairs = parse_symbols_bitfinex(pair_codes)
+    if args.strategies:
+        strategies_filename = os.path.abspath(args.strategies)
+        logging.info('loading strategies from "{}"'.format(strategies_filename))
+        with open(strategies_filename, 'r') as strategies_file:
+            strategies = [parse_strategy(line) for line in strategies_file.readlines() if len(line.strip()) > 0]
+
+        logging.info('loaded {} strategies'.format(len(strategies)))
+
+    else:
+        logging.info('loading strategies from standard input')
+        strategies = list()
+        for line in sys.stdin:
+            if len(line.strip()) > 0:
+                strategies.append(parse_strategy(line))
 
     def order_book_l1(client):
         def wrapped(pair):
@@ -69,7 +82,7 @@ def main(args):
 
         return wrapped
 
-    strategies = create_strategies(pairs)
+    bitfinex_client = bitfinex.Client()
     results = scan_arbitrage_opportunities(strategies, order_book_l1(bitfinex_client), illimited_volume=True)
     for trades, balances in results:
         print(trades)
@@ -90,6 +103,7 @@ if __name__ == '__main__':
                                      )
     parser.add_argument('--config', type=str, help='configuration file', default='config.json')
     parser.add_argument('--secrets', type=str, help='configuration with secret connection data', default='secrets.json')
+    parser.add_argument('--strategies', type=str, help='list of strategies')
 
     args = parser.parse_args()
     # DEBUGGING

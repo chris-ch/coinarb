@@ -1,5 +1,6 @@
 import logging
 from functools import total_ordering
+from typing import List
 
 import numpy
 import itertools
@@ -8,74 +9,26 @@ from decimal import Decimal
 import pandas
 
 
-def calculate_arbitrage_opportunity(pair_1, quote_1, pair_2, quote_2, pair_3, quote_3, skip_capped=True, illimited_volume=False):
-    """
-
-    :param pair_1:
-    :param quote_1:
-    :param pair_2:
-    :param quote_2:
-    :param pair_3:
-    :param quote_3:
-    :param skip_capped:
-    :param illimited_volume: emulates infinite liquidity
-    :return: (trades, balances)
-    """
-    pairs = [pair_1, pair_2, pair_3]
-    quotes = [quote_1, quote_2, quote_3]
-    opportunities = list()
-    for first, second, third in itertools.permutations([0, 1, 2]):
-        currency_initial = pairs[first].quote
-        initial_quote = quotes[first]
-        if currency_initial in pairs[second].assets:
-            next_pair = pairs[second]
-            next_quote = quotes[second]
-            final_pair = pairs[third]
-            final_quote = quotes[third]
-
-        else:
-            next_pair = pairs[third]
-            next_quote = quotes[third]
-            final_pair = pairs[second]
-            final_quote = quotes[second]
-
-        if next_pair.base != currency_initial:
-            currency_next = next_pair.base
-
-        else:
-            currency_next = next_pair.quote
-
-        balance_initial, trade_initial = pairs[first].buy_currency(currency_initial, 1, initial_quote, illimited_volume)
-        balance_next, trade_next = next_pair.sell_currency(currency_initial, balance_initial[currency_initial],
-                                                           next_quote, illimited_volume)
-        balance_final, trade_final = final_pair.sell_currency(currency_next, balance_next[currency_next],
-                                                              final_quote, illimited_volume)
-
-        balance1_series = pandas.Series(balance_initial, name='initial')
-        balance2_series = pandas.Series(balance_next, name='next')
-        balance3_series = pandas.Series(balance_final, name='final')
-        balances = pandas.concat([balance1_series, balance2_series, balance3_series], axis=1)
-        trades_df = pandas.DataFrame([trade_initial, trade_next, trade_final])
-        if not skip_capped or trades_df['capped'].count() == 0:
-            logging.info('adding new opportunity:\n{}'.format(trades_df))
-            logging.info('resulting balances:\n{}'.format(balances.sum(axis=1)))
-            opportunities.append((trades_df, balances.sum(axis=1)))
-
-        else:
-            logging.info('no opportunity')
-
-    return opportunities
-
-
 @total_ordering
 class ArbitrageStrategy(object):
     """
     Models an arbitrage strategy.
     """
     def __init__(self, pair1, pair2, pair3):
+        """
+
+        :param pair1: CurrencyPair instance
+        :param pair2: CurrencyPair instance
+        :param pair3: CurrencyPair instance
+        """
         self._pair1 = pair1
         self._pair2 = pair2
         self._pair3 = pair3
+        self._quotes = {
+            self._pair1: ForexQuote(None, None, None),
+            self._pair2: ForexQuote(None, None, None),
+            self._pair3: ForexQuote(None, None, None)
+        }
 
     @property
     def pairs(self):
@@ -96,24 +49,91 @@ class ArbitrageStrategy(object):
     def __le__(self, other):
         return repr(self) <= repr(other)
 
-    def find_opportunities(self, order_book_callbak, illimited_volume):
+    def update_quotes(self, order_book_callbak):
         """
 
         :param order_book_callbak: retrieves quote for given CurrencyPair instance
-        :param illimited_volume: emulates infinite liquidity
         :return:
         """
-        logging.info('trying strategy'.format(self))
         common_pair, indirect_pair_1, indirect_pair_2 = self.pairs
         common_quote = order_book_callbak(common_pair)
         indirect_quote_1 = order_book_callbak(indirect_pair_1)
         indirect_quote_2 = order_book_callbak(indirect_pair_2)
-        complete_data = common_quote.is_complete() and indirect_quote_1.is_complete() and indirect_quote_2.is_complete()
+        self._quotes = {
+            common_pair: common_quote,
+            indirect_pair_1: indirect_quote_1,
+            indirect_pair_2: indirect_quote_2
+        }
+
+    @property
+    def quotes(self):
+        """
+
+        :return:
+        """
+        return self._quotes
+
+    @property
+    def quotes_valid(self):
+        """
+
+        :return:
+        """
+        is_valid = True
+        for pair, quote in self.quotes.items():
+            is_valid = is_valid and quote.is_complete()
+
+        return is_valid
+
+    def find_opportunities(self, illimited_volume, skip_capped=True):
+        """
+
+        :param illimited_volume: emulates infinite liquidity
+        :param skip_capped:
+        :return:
+        """
+        logging.info('trying strategy'.format(self))
         opportunities = list()
-        if complete_data:
-            opportunities = calculate_arbitrage_opportunity(common_pair, common_quote,
-                                                            indirect_pair_1, indirect_quote_1,
-                                                            indirect_pair_2, indirect_quote_2, illimited_volume)
+        for pair1, pair2, pair3 in itertools.permutations(self.pairs):
+            currency_initial = pair1.quote
+            initial_quote = self.quotes[pair1]
+            if currency_initial in pair2.assets:
+                next_pair = pair2
+                next_quote = self.quotes[pair2]
+                final_pair = pair3
+                final_quote = self.quotes[pair3]
+
+            else:
+                next_pair = pair3
+                next_quote = self.quotes[pair3]
+                final_pair = pair2
+                final_quote = self.quotes[pair2]
+
+            if next_pair.base != currency_initial:
+                currency_next = next_pair.base
+
+            else:
+                currency_next = next_pair.quote
+
+            balance_initial, trade_initial = pair1.buy_currency(currency_initial, 1, initial_quote, illimited_volume)
+            balance_next, trade_next = next_pair.sell_currency(currency_initial, balance_initial[currency_initial],
+                                                               next_quote, illimited_volume)
+            balance_final, trade_final = final_pair.sell_currency(currency_next, balance_next[currency_next],
+                                                                  final_quote, illimited_volume)
+
+            balance1_series = pandas.Series(balance_initial, name='initial')
+            balance2_series = pandas.Series(balance_next, name='next')
+            balance3_series = pandas.Series(balance_final, name='final')
+            balances = pandas.concat([balance1_series, balance2_series, balance3_series], axis=1)
+            trades_df = pandas.DataFrame([trade_initial, trade_next, trade_final])
+            if not skip_capped or trades_df['capped'].count() == 0:
+                logging.info('adding new opportunity:\n{}'.format(trades_df))
+                logging.info('resulting balances:\n{}'.format(balances.sum(axis=1)))
+                opportunities.append((trades_df, balances.sum(axis=1)))
+
+            else:
+                logging.info('no opportunity')
+
         return opportunities
 
 

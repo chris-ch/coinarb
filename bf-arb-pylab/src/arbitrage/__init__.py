@@ -1,5 +1,6 @@
 import itertools
 import logging
+import re
 
 from arbitrage.entities import ArbitrageStrategy, CurrencyPair
 
@@ -31,6 +32,19 @@ def parse_currency_pair(pair_string, separator='/'):
     """
     pair1, pair2 = pair_string.split(separator)
     return CurrencyPair(pair1[1:], pair2[:-1])
+
+
+def parse_strategy(strategy_string: str):
+    """
+
+    :param strategy_string: example [<btc/eth>,<usd/btc>,<usd/eth>]
+    :return:
+    """
+    pattern = re.match(r'^\[(.*),(.*),(.*)\]$', strategy_string.strip())
+    pair1 = pattern.group(1)
+    pair2 = pattern.group(2)
+    pair3 = pattern.group(3)
+    return ArbitrageStrategy(parse_currency_pair(pair1), parse_currency_pair(pair2), parse_currency_pair(pair3))
 
 
 def create_strategies(pairs):
@@ -72,8 +86,10 @@ def scan_arbitrage_opportunities(strategies, order_book_callbak, illimited_volum
     """
     results = list()
     for strategy in strategies:
-        opportunities = strategy.find_opportunities(order_book_callbak, illimited_volume)
-        if opportunities is not None and len(opportunities) > 0:
-            results += opportunities
+        strategy.update_quotes(order_book_callbak)
+        if strategy.quotes_valid:
+            opportunities = strategy.find_opportunities(illimited_volume)
+            if opportunities is not None and len(opportunities) > 0:
+                results += opportunities
 
     return results

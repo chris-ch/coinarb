@@ -6,8 +6,9 @@ from decimal import Decimal
 
 import requests_cache
 
-from arbitrage import parse_pair_from_indirect, scan_arbitrage_opportunities, create_strategies, parse_currency_pair
-from arbitrage.entities import ForexQuote, ArbitrageStrategy
+from arbitrage import parse_pair_from_indirect, scan_arbitrage_opportunities, create_strategies, parse_currency_pair, \
+    parse_strategy
+from arbitrage.entities import ForexQuote, ArbitrageStrategy, CurrencyPair
 
 
 class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
@@ -24,21 +25,21 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
 
         strategies = set(create_strategies(pairs))
         expected_strategies = {
-        ArbitrageStrategy(parse_currency_pair(pair1), parse_currency_pair(pair2), parse_currency_pair(pair3)) for
-        pair1, pair2, pair3 in
-        [('<eth/bch>', '<usd/bch>', '<usd/eth>'), ('<btc/rrt>', '<usd/btc>', '<usd/rrt>'),
-         ('<btc/etc>', '<usd/btc>', '<usd/etc>'), ('<btc/eth>', '<btc/san>', '<eth/san>'),
-         ('<btc/xrp>', '<usd/btc>', '<usd/xrp>'), ('<btc/eth>', '<btc/omg>', '<eth/omg>'),
-         ('<btc/bcc>', '<usd/bcc>', '<usd/btc>'), ('<btc/omg>', '<usd/btc>', '<usd/omg>'),
-         ('<eth/eos>', '<usd/eos>', '<usd/eth>'), ('<btc/iot>', '<usd/btc>', '<usd/iot>'),
-         ('<eth/omg>', '<usd/eth>', '<usd/omg>'), ('<btc/bch>', '<usd/bch>', '<usd/btc>'),
-         ('<btc/dsh>', '<usd/btc>', '<usd/dsh>'), ('<btc/ltc>', '<usd/btc>', '<usd/ltc>'),
-         ('<btc/xmr>', '<usd/btc>', '<usd/xmr>'), ('<btc/bcu>', '<usd/bcu>', '<usd/btc>'),
-         ('<eth/iot>', '<usd/eth>', '<usd/iot>'), ('<btc/eth>', '<usd/btc>', '<usd/eth>'),
-         ('<eth/san>', '<usd/eth>', '<usd/san>'), ('<btc/san>', '<usd/btc>', '<usd/san>'),
-         ('<btc/eth>', '<btc/iot>', '<eth/iot>'), ('<btc/eos>', '<usd/btc>', '<usd/eos>'),
-         ('<btc/bch>', '<btc/eth>', '<eth/bch>'), ('<btc/eos>', '<btc/eth>', '<eth/eos>'),
-         ('<btc/zec>', '<usd/btc>', '<usd/zec>')]}
+            ArbitrageStrategy(parse_currency_pair(pair1), parse_currency_pair(pair2), parse_currency_pair(pair3)) for
+            pair1, pair2, pair3 in
+            [('<eth/bch>', '<usd/bch>', '<usd/eth>'), ('<btc/rrt>', '<usd/btc>', '<usd/rrt>'),
+             ('<btc/etc>', '<usd/btc>', '<usd/etc>'), ('<btc/eth>', '<btc/san>', '<eth/san>'),
+             ('<btc/xrp>', '<usd/btc>', '<usd/xrp>'), ('<btc/eth>', '<btc/omg>', '<eth/omg>'),
+             ('<btc/bcc>', '<usd/bcc>', '<usd/btc>'), ('<btc/omg>', '<usd/btc>', '<usd/omg>'),
+             ('<eth/eos>', '<usd/eos>', '<usd/eth>'), ('<btc/iot>', '<usd/btc>', '<usd/iot>'),
+             ('<eth/omg>', '<usd/eth>', '<usd/omg>'), ('<btc/bch>', '<usd/bch>', '<usd/btc>'),
+             ('<btc/dsh>', '<usd/btc>', '<usd/dsh>'), ('<btc/ltc>', '<usd/btc>', '<usd/ltc>'),
+             ('<btc/xmr>', '<usd/btc>', '<usd/xmr>'), ('<btc/bcu>', '<usd/bcu>', '<usd/btc>'),
+             ('<eth/iot>', '<usd/eth>', '<usd/iot>'), ('<btc/eth>', '<usd/btc>', '<usd/eth>'),
+             ('<eth/san>', '<usd/eth>', '<usd/san>'), ('<btc/san>', '<usd/btc>', '<usd/san>'),
+             ('<btc/eth>', '<btc/iot>', '<eth/iot>'), ('<btc/eos>', '<usd/btc>', '<usd/eos>'),
+             ('<btc/bch>', '<btc/eth>', '<eth/bch>'), ('<btc/eos>', '<btc/eth>', '<eth/eos>'),
+             ('<btc/zec>', '<usd/btc>', '<usd/zec>')]}
         self.assertSetEqual(set(strategies), expected_strategies)
 
     def test_arb(self):
@@ -92,6 +93,12 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
                 self.assertAlmostEqual(balances['usd'], -0.00019632, places=8)
                 self.assertAlmostEqual(balances['eos'], 0, places=6)
                 self.assertAlmostEqual(balances['eth'], 0, places=6)
+
+    def test_parse_strategy(self):
+        input = '[<btc/eth>,<usd/btc>,<usd/eth>]'
+        strategy = parse_strategy(input)
+        self.assertEqual(strategy, ArbitrageStrategy(CurrencyPair('btc', 'eth'), CurrencyPair('usd', 'btc'),
+                                                     CurrencyPair('usd', 'eth')))
 
 
 if __name__ == '__main__':
