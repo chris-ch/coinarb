@@ -1,7 +1,6 @@
 import argparse
 import logging
 
-import pandas
 import tenacity
 import time
 from btfxwss import BtfxWss
@@ -9,13 +8,14 @@ import bitfinex
 import requests_cache
 from decimal import Decimal
 
-from arbitrage import scan_arbitrage_opportunities, create_pair_from_indirect, create_pair_from_direct, ForexQuote
+from arbitrage import scan_arbitrage_opportunities, parse_pair_from_indirect, create_strategies
+from arbitrage.entities import ForexQuote
 
 
 def parse_symbols_bitfinex(pairs):
     symbols = set()
     for pair_code in pairs:
-        symbols.add(create_pair_from_indirect(pair_code))
+        symbols.add(parse_pair_from_indirect(pair_code))
 
     return symbols
 
@@ -69,7 +69,8 @@ def main(args):
 
         return wrapped
 
-    results = scan_arbitrage_opportunities(pairs, order_book_l1(bitfinex_client), illimited_volume=True)
+    strategies = create_strategies(pairs)
+    results = scan_arbitrage_opportunities(strategies, order_book_l1(bitfinex_client), illimited_volume=True)
     for trades, balances in results:
         print(trades)
         print(balances)

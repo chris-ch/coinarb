@@ -6,12 +6,40 @@ from decimal import Decimal
 
 import requests_cache
 
-from arbitrage import create_pair_from_indirect, ForexQuote, scan_arbitrage_opportunities
+from arbitrage import parse_pair_from_indirect, scan_arbitrage_opportunities, create_strategies, parse_currency_pair
+from arbitrage.entities import ForexQuote, ArbitrageStrategy
 
 
-class FindArbitrageOpportuinitiesTestCase(unittest.TestCase):
+class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
     def setUp(self):
         pass
+
+    def test_find_strategies(self):
+        requests_cache.install_cache('test_set_1')
+        bitfinex_client = bitfinex.Client()
+        pair_codes = bitfinex_client.symbols()
+        pairs = set()
+        for pair_code in pair_codes:
+            pairs.add(parse_pair_from_indirect(pair_code))
+
+        strategies = set(create_strategies(pairs))
+        expected_strategies = {
+        ArbitrageStrategy(parse_currency_pair(pair1), parse_currency_pair(pair2), parse_currency_pair(pair3)) for
+        pair1, pair2, pair3 in
+        [('<eth/bch>', '<usd/bch>', '<usd/eth>'), ('<btc/rrt>', '<usd/btc>', '<usd/rrt>'),
+         ('<btc/etc>', '<usd/btc>', '<usd/etc>'), ('<btc/eth>', '<btc/san>', '<eth/san>'),
+         ('<btc/xrp>', '<usd/btc>', '<usd/xrp>'), ('<btc/eth>', '<btc/omg>', '<eth/omg>'),
+         ('<btc/bcc>', '<usd/bcc>', '<usd/btc>'), ('<btc/omg>', '<usd/btc>', '<usd/omg>'),
+         ('<eth/eos>', '<usd/eos>', '<usd/eth>'), ('<btc/iot>', '<usd/btc>', '<usd/iot>'),
+         ('<eth/omg>', '<usd/eth>', '<usd/omg>'), ('<btc/bch>', '<usd/bch>', '<usd/btc>'),
+         ('<btc/dsh>', '<usd/btc>', '<usd/dsh>'), ('<btc/ltc>', '<usd/btc>', '<usd/ltc>'),
+         ('<btc/xmr>', '<usd/btc>', '<usd/xmr>'), ('<btc/bcu>', '<usd/bcu>', '<usd/btc>'),
+         ('<eth/iot>', '<usd/eth>', '<usd/iot>'), ('<btc/eth>', '<usd/btc>', '<usd/eth>'),
+         ('<eth/san>', '<usd/eth>', '<usd/san>'), ('<btc/san>', '<usd/btc>', '<usd/san>'),
+         ('<btc/eth>', '<btc/iot>', '<eth/iot>'), ('<btc/eos>', '<usd/btc>', '<usd/eos>'),
+         ('<btc/bch>', '<btc/eth>', '<eth/bch>'), ('<btc/eos>', '<btc/eth>', '<eth/eos>'),
+         ('<btc/zec>', '<usd/btc>', '<usd/zec>')]}
+        self.assertSetEqual(set(strategies), expected_strategies)
 
     def test_arb(self):
         requests_cache.install_cache('test_set_1')
@@ -19,7 +47,7 @@ class FindArbitrageOpportuinitiesTestCase(unittest.TestCase):
         pair_codes = bitfinex_client.symbols()
         pairs = set()
         for pair_code in pair_codes:
-            pairs.add(create_pair_from_indirect(pair_code))
+            pairs.add(parse_pair_from_indirect(pair_code))
 
         def order_book_l1(client):
             def wrapped(pair):
@@ -37,7 +65,8 @@ class FindArbitrageOpportuinitiesTestCase(unittest.TestCase):
 
             return wrapped
 
-        results = scan_arbitrage_opportunities(pairs, order_book_l1(bitfinex_client), illimited_volume=True)
+        strategies = create_strategies(pairs)
+        results = scan_arbitrage_opportunities(strategies, order_book_l1(bitfinex_client), illimited_volume=True)
         expected_strategy = {'<usd/bch>', '<eth/bch>', '<usd/eth>'}
         strategy_found = False
         for trades, balances in results:
