@@ -96,6 +96,7 @@ class ArbitrageStrategy(object):
         opportunities = list()
         for pair1, pair2, pair3 in itertools.permutations(self.pairs):
             currency_initial = pair1.quote
+            logging.info('accumulating currency: {}'.format(pair1.base))
             initial_quote = self.quotes[pair1]
             if currency_initial in pair2.assets:
                 next_pair = pair2
@@ -124,12 +125,16 @@ class ArbitrageStrategy(object):
             balance1_series = pandas.Series(balance_initial, name='initial')
             balance2_series = pandas.Series(balance_next, name='next')
             balance3_series = pandas.Series(balance_final, name='final')
-            balances = pandas.concat([balance1_series, balance2_series, balance3_series], axis=1)
+            balance_series = [balance1_series, balance2_series, balance3_series]
+            balances_by_currency = pandas.concat(balance_series, axis=1).sum(axis=1)
+            remainder = balances_by_currency[pair1.base]
+
             trades_df = pandas.DataFrame([trade_initial, trade_next, trade_final])
             if not skip_capped or trades_df['capped'].count() == 0:
                 logging.info('adding new opportunity:\n{}'.format(trades_df))
-                logging.info('resulting balances:\n{}'.format(balances.sum(axis=1)))
-                opportunities.append((trades_df, balances.sum(axis=1)))
+                logging.info('resulting balances:\n{}'.format(balances_by_currency))
+                logging.info('remaining {} {}'.format(remainder, pair1.base))
+                opportunities.append((trades_df, {'remainder': remainder, 'currency': pair1.base}))
 
             else:
                 logging.info('no opportunity')

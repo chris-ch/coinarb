@@ -94,11 +94,11 @@ def main(args):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
     logging.getLogger('requests').setLevel(logging.WARNING)
-    file_handler = logging.FileHandler('update-nav-hist.log', mode='w')
+    file_handler = logging.FileHandler('scan-arb.log', mode='w')
     formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
     file_handler.setFormatter(formatter)
     logging.getLogger().addHandler(file_handler)
-    parser = argparse.ArgumentParser(description='NAV history update.',
+    parser = argparse.ArgumentParser(description='Scanning arbitrage opportunities.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter
                                      )
     parser.add_argument('--config', type=str, help='configuration file', default='config.json')

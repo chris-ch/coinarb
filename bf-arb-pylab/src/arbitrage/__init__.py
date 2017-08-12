@@ -84,12 +84,10 @@ def scan_arbitrage_opportunities(strategies, order_book_callbak, illimited_volum
     :param illimited_volume: emulates infinite liquidity
     :return:
     """
-    results = list()
+    opportunities = list()
     for strategy in strategies:
         strategy.update_quotes(order_book_callbak)
         if strategy.quotes_valid:
-            opportunities = strategy.find_opportunities(illimited_volume)
-            if opportunities is not None and len(opportunities) > 0:
-                results += opportunities
+            opportunities += strategy.find_opportunities(illimited_volume)
 
-    return results
+    return opportunities

@@ -72,10 +72,9 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         strategy_found = False
         for trades, balances in results:
             strategy = set(trades['pair'].tolist())
-            if len(strategy.symmetric_difference(expected_strategy)) == 0 and abs(balances['eth']) > 1e-10:
-                self.assertAlmostEqual(balances['eth'], -0.00575, places=6)
-                self.assertAlmostEqual(balances['bch'], 0, places=6)
-                self.assertAlmostEqual(balances['usd'], 0, places=6)
+            if len(strategy.symmetric_difference(expected_strategy)) == 0 and balances['currency'] == 'eth' :
+                self.assertEqual(balances['currency'], 'eth')
+                self.assertAlmostEqual(balances['remainder'], -0.00575, places=6)
                 strategy_found = True
 
         self.assertTrue(strategy_found, 'expected strategy not found')
@@ -87,12 +86,11 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
                            '<usd/eth>': {'direction': 'buy', 'price': Decimal('299.5200000000'),
                                          'quantity': Decimal('0.5583068919189320527113169254')}}
         for trades, balances in results:
-            current_trades = trades[['direction', 'pair', 'price', 'quantity']].set_index('pair').to_dict(
-                orient='index')
+            columns = ['direction', 'pair', 'price', 'quantity']
+            current_trades = trades[columns].set_index('pair').to_dict(orient='index')
             if current_trades == expected_trades:
-                self.assertAlmostEqual(balances['usd'], -0.00019632, places=8)
-                self.assertAlmostEqual(balances['eos'], 0, places=6)
-                self.assertAlmostEqual(balances['eth'], 0, places=6)
+                self.assertAlmostEqual(balances['remainder'], -0.00019632, places=8)
+                self.assertEqual(balances['currency'], 'usd')
 
     def test_parse_strategy(self):
         input = '[<btc/eth>,<usd/btc>,<usd/eth>]'
