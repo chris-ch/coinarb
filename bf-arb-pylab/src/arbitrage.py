@@ -102,6 +102,49 @@ class CurrencyPair(object):
         trade = {'direction': 'sell', 'pair': repr(self), 'quantity': allowed_volume * -1, 'price': price, 'capped': capped}
         return balance, trade
 
+    def buy_currency(self, currency, volume, quote, illimited_volume=False):
+        """
+
+        :param currency: currency to buy
+        :param volume: amount to buy denominated in currency
+        :param quote: current quote (ForexQuote instance)
+        :param illimited_volume: emulates infinite liquidity
+        :return: resulting balance and performed trades (balance, performed_trade)
+        """
+        assert currency in self.assets, 'currency {} not in pair {}'.format(currency, self)
+        logging.debug('buying {} {} using pair {}'.format(volume, currency, self))
+        if currency == self.base:
+            # Direct quotation
+            balance, performed_trade = self.buy(quote, volume, illimited_volume)
+
+        else:
+            # Indirect quotation
+            target_volume = Decimal(volume) / quote.bid['price']
+            balance, performed_trade = self.sell(quote, target_volume, illimited_volume)
+
+        return balance, performed_trade
+
+    def sell_currency(self, currency, volume, quote, illimited_volume=False):
+        """
+
+        :param currency:
+        :param volume: amount to buy denominated in currency
+        :param quote: current quote (ForexQuote instance)
+        :param illimited_volume: emulates infinite liquidity
+        :return: resulting balance and performed trades (balance, performed_trade)
+        """
+        assert currency in self.assets, 'currency {} not in pair {}'.format(currency, self)
+        logging.debug('selling {} {} using pair {}'.format(volume, currency, self))
+        if currency == self.base:
+            # Direct quotation
+            balance, performed_trade = self.sell(quote, volume, illimited_volume)
+
+        else:
+            # Indirect quotation
+            target_volume = Decimal(volume) / quote.ask['price']
+            balance, performed_trade = self.buy(quote, target_volume, illimited_volume)
+
+        return balance, performed_trade
 
     @property
     def assets(self):
@@ -132,52 +175,6 @@ class CurrencyPair(object):
 
     def __ne__(self, other):
         return not self == other
-
-
-def buy_currency_using_pair(currency, volume, pair, quote, illimited_volume=False):
-    """
-
-    :param currency:
-    :param volume: amount to buy denominated in currency
-    :param pair: CurrencyPair instance
-    :param quote:
-    :param illimited_volume: emulates infinite liquidity
-    :return:
-    """
-    logging.debug('buying {} {} using {}'.format(volume, currency, pair))
-    if currency == pair.base:
-        # Direct quotation
-        balance, performed_trade = pair.buy(quote, volume, illimited_volume)
-
-    else:
-        # Indirect quotation
-        target_volume = Decimal(volume) / quote.bid['price']
-        balance, performed_trade = pair.sell(quote, target_volume, illimited_volume)
-
-    return balance, performed_trade
-
-
-def sell_currency_using_pair(currency, volume, pair, quote, illimited_volume=False):
-    """
-
-    :param currency:
-    :param volume: amount to buy denominated in currency
-    :param pair: CurrencyPair instance
-    :param quote:
-    :param illimited_volume: emulates infinite liquidity
-    :return:
-    """
-    logging.debug('selling {} {} using {}'.format(volume, currency, pair))
-    if currency == pair.base:
-        # Direct quotation
-        balance, performed_trade = pair.sell(quote, volume, illimited_volume)
-
-    else:
-        # Indirect quotation
-        target_volume = Decimal(volume) / quote.ask['price']
-        balance, performed_trade = pair.buy(quote, target_volume, illimited_volume)
-
-    return balance, performed_trade
 
 
 def calculate_arbitrage_opportunity(pair_1, quote_1, pair_2, quote_2, pair_3, quote_3, skip_capped=True, illimited_volume=False):
@@ -217,10 +214,10 @@ def calculate_arbitrage_opportunity(pair_1, quote_1, pair_2, quote_2, pair_3, qu
         else:
             currency_next = next_pair.quote
 
-        balance_initial, trade_initial = buy_currency_using_pair(currency_initial, 1, pairs[first], initial_quote, illimited_volume)
-        balance_next, trade_next = sell_currency_using_pair(currency_initial, balance_initial[currency_initial],
-                                                            next_pair, next_quote, illimited_volume)
-        balance_final, trade_final = sell_currency_using_pair(currency_next, balance_next[currency_next], final_pair,
+        balance_initial, trade_initial = pairs[first].buy_currency(currency_initial, 1, initial_quote, illimited_volume)
+        balance_next, trade_next = next_pair.sell_currency(currency_initial, balance_initial[currency_initial],
+                                                            next_quote, illimited_volume)
+        balance_final, trade_final = final_pair.sell_currency(currency_next, balance_next[currency_next],
                                                               final_quote, illimited_volume)
 
         balance1_series = pandas.Series(balance_initial, name='initial')
