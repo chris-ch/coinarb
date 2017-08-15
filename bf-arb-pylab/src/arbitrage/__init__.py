@@ -1,8 +1,9 @@
 import itertools
 import logging
 import re
+from time import sleep
 
-from arbitrage.entities import ArbitrageStrategy, CurrencyPair
+from arbitrage.entities import ArbitrageStrategy, CurrencyPair, CurrencyConverter
 
 
 def parse_pair_from_indirect(pair_code):
@@ -34,7 +35,7 @@ def parse_currency_pair(pair_string, separator='/'):
     return CurrencyPair(pair1[1:], pair2[:-1])
 
 
-def parse_strategy(strategy_string: str):
+def parse_strategy(strategy_string):
     """
 
     :param strategy_string: example [<btc/eth>,<usd/btc>,<usd/eth>]
@@ -75,19 +76,27 @@ def create_strategies(pairs):
             continue
 
 
-def scan_arbitrage_opportunities(strategies, order_book_callbak, illimited_volume):
+def scan_arbitrage_opportunities(strategy, order_book_callbak, bitfinex_client, illimited_volume):
     """
     Scanning arbitrage opportunities over the indicated pairs.
 
-    :param strategies: iterable of pairs triplet
+    :param strategy: iterable of pairs triplet
     :param order_book_callbak:
     :param illimited_volume: emulates infinite liquidity
     :return:
     """
-    opportunities = list()
-    for strategy in strategies:
-        strategy.update_quotes(order_book_callbak)
-        if strategy.quotes_valid:
-            opportunities += strategy.find_opportunities(illimited_volume)
+    pair_codes = bitfinex_client.symbols()
 
-    return opportunities
+    while True:  # TODO use websocket API instead
+        quotes = order_book_callbak(bitfinex_client)
+        strategy.update_quotes(quotes)
+        if strategy.quotes_valid:
+            result = strategy.find_opportunities(illimited_volume)
+            converter = CurrencyConverter('btc', pair_codes, quotes)
+            for trades, balances in result:
+                bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
+                if bitcoin_amount > 0:
+                    logging.info('residual value: {}'.format(bitcoin_amount))
+                    logging.info('trades:\n{}'.format(trades))
+        logging.info('---------------- sleeping 1 second ----------------')
+        sleep(1)

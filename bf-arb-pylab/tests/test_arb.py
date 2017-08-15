@@ -3,12 +3,13 @@ import logging
 
 import bitfinex
 from decimal import Decimal
+from datetime import datetime
 
 import requests_cache
 
 from arbitrage import parse_pair_from_indirect, scan_arbitrage_opportunities, create_strategies, parse_currency_pair, \
     parse_strategy
-from arbitrage.entities import ForexQuote, ArbitrageStrategy, CurrencyPair
+from arbitrage.entities import ForexQuote, ArbitrageStrategy, CurrencyPair, CurrencyConverter
 
 
 class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
@@ -97,6 +98,17 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         strategy = parse_strategy(input)
         self.assertEqual(strategy, ArbitrageStrategy(CurrencyPair('btc', 'eth'), CurrencyPair('usd', 'btc'),
                                                      CurrencyPair('usd', 'eth')))
+
+    def test_converter(self):
+        def quote_loader(pair):
+            bid = {'price': Decimal('0.66'), 'volume': Decimal(100)}
+            ask = {'price': Decimal('0.67'), 'volume': Decimal(100)}
+            return ForexQuote(datetime(2017, 1, 1), bid, ask)
+
+        converter = CurrencyConverter(('usd', 'gbp'), quote_loader)
+        self.assertEqual(converter.buy('gbp', Decimal('0.66')), Decimal(-1))  # 0.66 GBP cost 1 USD
+        self.assertEqual(converter.sell('gbp', Decimal('0.67')), Decimal(1))  # 0.67 GBP needed for receiving 1 USD
+        self.assertAlmostEqual(converter.buy('gbp', Decimal('1.')), Decimal(-1.52), places=2)  # 1 GBP costs 1.52 USD
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')

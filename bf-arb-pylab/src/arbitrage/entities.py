@@ -325,3 +325,58 @@ class ForexQuote(object):
 
     def is_complete(self):
         return self._bid is not None and self._ask is not None
+
+
+class CurrencyConverter(object):
+    """
+    Forex conversion.
+    """
+    def __init__(self, market, order_book_callback, direct=True):
+        """
+
+        :param market_name: market name is the currency pair, for example ('USD', 'EUR')
+        :param order_book_callback: function returning a quote for a given CurrencyPair
+        :param direct: when foreign currency comes first in market name
+        """
+        if direct:
+            self._domestic_currency, self._foreign_currency = market
+
+        else:
+            self._foreign_currency, self._domestic_currency = market
+
+        self._order_book_callback = order_book_callback
+
+    @property
+    def domestic_currency(self):
+        return self._domestic_currency
+
+    @property
+    def foreign_currency(self):
+        return self._foreign_currency
+
+    def exchange(self, currency, amount):
+        """
+
+        :param currency:
+        :param amount:
+        :return:
+        """
+        if currency == self.domestic_currency:
+            return amount
+
+        elif currency == self.foreign_currency:
+            target_pair = CurrencyPair(self.domestic_currency, currency)
+
+        else:
+            raise LookupError('unable to converting {}'.format(currency))
+
+        quote = self._order_book_callback(target_pair)
+        return target_pair.convert(currency, amount, quote)
+
+    def sell(self, currency, amount):
+        assert amount > 0
+        return self.exchange(currency, amount)
+
+    def buy(self, currency, amount):
+        assert amount > 0
+        return self.exchange(currency, -amount)

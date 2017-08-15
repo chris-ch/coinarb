@@ -11,7 +11,7 @@ import bitfinex
 import requests_cache
 from decimal import Decimal
 
-from arbitrage import scan_arbitrage_opportunities, parse_pair_from_indirect, create_strategies, parse_strategy
+from arbitrage import scan_arbitrage_opportunities, parse_pair_from_indirect, parse_strategy
 from arbitrage.entities import ForexQuote, CurrencyPair
 
 
@@ -50,53 +50,13 @@ def wss():
     wss.stop()
 
 
-class CurrencyConverter(object):
-    def __init__(self, reference_currency, pair_codes, order_book_callback):
-        self._reference_currency = reference_currency
-        self._pair_codes = pair_codes
-        self._order_book_callback = order_book_callback
-
-    @property
-    def reference_currency(self):
-        return self._reference_currency
-
-    @property
-    def pairs(self):
-        return self._pair_codes
-
-    def exchange(self, currency, amount):
-        if currency == self.reference_currency:
-            return amount
-
-        target_pair = None
-        if currency + self.reference_currency in self.pairs:
-            target_pair = CurrencyPair(self.reference_currency, currency)
-
-        elif self.reference_currency + currency in self.pairs:
-            target_pair = CurrencyPair(currency, self.reference_currency)
-
-        if target_pair is None:
-            raise LookupError('unable to find suitable pair for converting {} into {}'.format(currency, self.reference_currency))
-
-        quote = self._order_book_callback(target_pair)
-        return target_pair.convert(currency, amount, quote)
-
-
 def main(args):
-    if args.strategies:
-        strategies_filename = os.path.abspath(args.strategies)
-        logging.info('loading strategies from "{}"'.format(strategies_filename))
-        with open(strategies_filename, 'r') as strategies_file:
-            strategies = [parse_strategy(line) for line in strategies_file.readlines() if len(line.strip()) > 0]
-
-        logging.info('loaded {} strategies'.format(len(strategies)))
+    if args.strategy:
+        strategy = parse_strategy(args.strategy)
 
     else:
-        logging.info('loading strategies from standard input')
-        strategies = list()
-        for line in sys.stdin:
-            if len(line.strip()) > 0:
-                strategies.append(parse_strategy(line))
+        logging.info('loading strategy from standard input')
+        strategy = sys.stdin.readline()
 
     def order_book_l1(client):
         """
@@ -125,16 +85,7 @@ def main(args):
         return wrapped
 
     bitfinex_client = bitfinex.Client()
-    pair_codes = bitfinex_client.symbols()
-    converter = CurrencyConverter('btc', pair_codes, order_book_l1(bitfinex_client))
-    results = scan_arbitrage_opportunities(strategies, order_book_l1(bitfinex_client), illimited_volume=True)
-    for trades, balances in results:
-        bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
-        if bitcoin_amount > 0:
-            logging.info('residual value: {}'.format(bitcoin_amount))
-            logging.info('trades:\n{}'.format(trades))
-
-    return
+    scan_arbitrage_opportunities(strategy, order_book_l1, bitfinex_client, illimited_volume=True)
 
 
 if __name__ == '__main__':
@@ -149,7 +100,7 @@ if __name__ == '__main__':
                                      )
     parser.add_argument('--config', type=str, help='configuration file', default='config.json')
     parser.add_argument('--secrets', type=str, help='configuration with secret connection data', default='secrets.json')
-    parser.add_argument('--strategies', type=str, help='list of strategies')
+    parser.add_argument('--strategy', type=str, help='strategy as a formatted string ([<btc/etc>,<usd/btc>,<usd/etc>])')
 
     args = parser.parse_args()
     # DEBUGGING
