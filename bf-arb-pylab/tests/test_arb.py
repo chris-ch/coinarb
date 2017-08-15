@@ -7,8 +7,7 @@ from datetime import datetime
 
 import requests_cache
 
-from arbitrage import parse_pair_from_indirect, scan_arbitrage_opportunities, create_strategies, parse_currency_pair, \
-    parse_strategy
+from arbitrage import parse_pair_from_indirect, create_strategies, parse_currency_pair, parse_strategy
 from arbitrage.entities import ForexQuote, ArbitrageStrategy, CurrencyPair, CurrencyConverter
 
 
