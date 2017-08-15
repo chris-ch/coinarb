@@ -85,15 +85,14 @@ def scan_arbitrage_opportunities(strategy, order_book_callbak, bitfinex_client, 
     :param illimited_volume: emulates infinite liquidity
     :return:
     """
-    pair_codes = bitfinex_client.symbols()
-
     while True:  # TODO use websocket API instead
         quotes = order_book_callbak(bitfinex_client)
         strategy.update_quotes(quotes)
         if strategy.quotes_valid:
             result = strategy.find_opportunities(illimited_volume)
-            converter = CurrencyConverter('btc', pair_codes, quotes)
             for trades, balances in result:
+                market = ('btc', balances['currency'])
+                converter = CurrencyConverter(market, order_book_callbak)
                 bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
                 if bitcoin_amount > 0:
                     logging.info('residual value: {}'.format(bitcoin_amount))
