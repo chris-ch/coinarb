@@ -281,19 +281,19 @@ class CurrencyPair(object):
         return self._base_currency_code
 
     def to_direct(self, separator='/'):
-        return '{}{}{}'.format(self._base_currency_code, separator, self._quote_currency_code)
+        return '{}{}{}'.format(self.base, separator, self.quote)
 
     def to_indirect(self, separator='/'):
-        return '{}{}{}'.format(self._quote_currency_code, separator, self._base_currency_code)
+        return '{}{}{}'.format(self.quote, separator, self.base)
 
     def __repr__(self):
-        return '<{}/{}>'.format(self._base_currency_code, self._quote_currency_code)
+        return '<{}/{}>'.format(self.base, self.quote)
 
     def __hash__(self):
-        return hash(self._base_currency_code + self._quote_currency_code)
+        return hash(self.base + self.quote)
 
     def __eq__(self, other):
-        return (self._base_currency_code == other._base_currency_code) and (self._quote_currency_code == other._quote_currency_code)
+        return (self.base == other.base) and (self.quote == other.quote)
 
     def __ne__(self, other):
         return not self == other

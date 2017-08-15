@@ -61,13 +61,17 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
 
     def test_arbitrage(self):
         def quote_loader(pair):
-            if pair == '':
+            if pair == CurrencyPair('btc', 'eth'):
                 bid = {'price': Decimal('0.66'), 'volume': Decimal(100)}
                 ask = {'price': Decimal('0.67'), 'volume': Decimal(100)}
-            elif pair == '':
+            elif pair == CurrencyPair('usd', 'btc'):
                 bid = {'price': Decimal('0.66'), 'volume': Decimal(100)}
                 ask = {'price': Decimal('0.67'), 'volume': Decimal(100)}
-            elif pair == '':
+            elif pair == CurrencyPair('usd', 'eth'):
+                bid = {'price': Decimal('0.66'), 'volume': Decimal(100)}
+                ask = {'price': Decimal('0.67'), 'volume': Decimal(100)}
+            # for conversion of remaining balance
+            elif pair == CurrencyPair('btc', 'usd'):
                 bid = {'price': Decimal('0.66'), 'volume': Decimal(100)}
                 ask = {'price': Decimal('0.67'), 'volume': Decimal(100)}
             else:
@@ -78,15 +82,15 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         input = '[<btc/eth>,<usd/btc>,<usd/eth>]'
         strategy = parse_strategy(input)
         strategy.update_quotes(quote_loader)
-        if strategy.quotes_valid:
-            result = strategy.find_opportunities(illimited_volume=True)
-            for trades, balances in result:
-                market = ('btc', balances['currency'])
-                converter = CurrencyConverter(market, quote_loader)
-                bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
-                if bitcoin_amount > 0:
-                    logging.info('residual value: {}'.format(bitcoin_amount))
-                    logging.info('trades:\n{}'.format(trades))
+        self.assertTrue(strategy.quotes_valid)
+        result = strategy.find_opportunities(illimited_volume=True)
+        for trades, balances in result:
+            market = ('btc', balances['currency'])
+            converter = CurrencyConverter(market, quote_loader)
+            bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
+            if bitcoin_amount > 0:
+                logging.info('residual value: {}'.format(bitcoin_amount))
+                logging.info('trades:\n{}'.format(trades))
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
