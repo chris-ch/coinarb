@@ -8,7 +8,7 @@ from datetime import datetime
 import requests_cache
 
 from arbitrage import parse_pair_from_indirect, create_strategies, parse_currency_pair, parse_strategy
-from arbitrage.entities import ForexQuote, ArbitrageStrategy, CurrencyPair, CurrencyConverter
+from arbitrage.entities import ForexQuote, ArbitrageStrategy, CurrencyPair, CurrencyConverter, PriceVolume
 
 
 class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
@@ -50,8 +50,8 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
 
     def test_converter(self):
         def quote_loader(pair):
-            bid = {'price': Decimal('0.66'), 'volume': Decimal(100)}
-            ask = {'price': Decimal('0.67'), 'volume': Decimal(100)}
+            bid = PriceVolume(Decimal('0.66'), Decimal(100))
+            ask = PriceVolume(Decimal('0.67'), Decimal(100))
             return ForexQuote(datetime(2017, 1, 1), bid, ask)
 
         converter = CurrencyConverter(('usd', 'gbp'), quote_loader)
@@ -61,35 +61,41 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
 
     def test_arbitrage(self):
         def quote_loader(pair):
-            if pair == CurrencyPair('btc', 'eth'):
-                bid = {'price': Decimal('0.66'), 'volume': Decimal(100)}
-                ask = {'price': Decimal('0.67'), 'volume': Decimal(100)}
-            elif pair == CurrencyPair('usd', 'btc'):
-                bid = {'price': Decimal('0.66'), 'volume': Decimal(100)}
-                ask = {'price': Decimal('0.67'), 'volume': Decimal(100)}
-            elif pair == CurrencyPair('usd', 'eth'):
-                bid = {'price': Decimal('0.66'), 'volume': Decimal(100)}
-                ask = {'price': Decimal('0.67'), 'volume': Decimal(100)}
-            # for conversion of remaining balance
-            elif pair == CurrencyPair('btc', 'usd'):
-                bid = {'price': Decimal('0.66'), 'volume': Decimal(100)}
-                ask = {'price': Decimal('0.67'), 'volume': Decimal(100)}
+            if pair == CurrencyPair('eur', 'chf'):
+                bid = PriceVolume(Decimal('1.14'), Decimal(100))
+                ask = PriceVolume(Decimal('1.15'), Decimal(100))
+            elif pair == CurrencyPair('chf', 'usd'):
+                bid = PriceVolume(Decimal('1.04'), Decimal(100))
+                ask = PriceVolume(Decimal('1.05'), Decimal(100))
+            elif pair == CurrencyPair('eur', 'usd'):
+                bid = PriceVolume(Decimal('1.19'), Decimal(100))
+                ask = PriceVolume(Decimal('1.20'), Decimal(100))
+            # remaining balances
+            elif pair == CurrencyPair('usd', 'eur'):
+                bid = PriceVolume(Decimal('0.835'), Decimal(100))
+                ask = PriceVolume(Decimal('0.840'), Decimal(100))
+            elif pair == CurrencyPair('usd', 'chf'):
+                bid = PriceVolume(Decimal('0.955'), Decimal(100))
+                ask = PriceVolume( Decimal('0.960'), Decimal(100))
             else:
                 raise NotImplementedError('illegal pair: {}'.format(pair))
 
             return ForexQuote(datetime(2017, 1, 1), bid, ask)
 
-        input = '[<btc/eth>,<usd/btc>,<usd/eth>]'
+        input = '[<eur/chf>,<chf/usd>,<usd/eur>]'
         strategy = parse_strategy(input)
         strategy.update_quotes(quote_loader)
         self.assertTrue(strategy.quotes_valid)
         result = strategy.find_opportunities(illimited_volume=True)
         for trades, balances in result:
-            market = ('btc', balances['currency'])
+            print('--------------------')
+            print(trades)
+            print(balances)
+            market = ('usd', balances['currency'])
             converter = CurrencyConverter(market, quote_loader)
-            bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
-            if bitcoin_amount > 0:
-                logging.info('residual value: {}'.format(bitcoin_amount))
+            remaining_amount = converter.exchange(balances['currency'], balances['remainder'])
+            if remaining_amount > 0:
+                logging.info('residual value: {}'.format(remaining_amount))
                 logging.info('trades:\n{}'.format(trades))
 
 if __name__ == '__main__':

@@ -1,11 +1,237 @@
 import logging
 from functools import total_ordering
+from typing import Tuple, Iterable, Mapping, Any, Type, NamedTuple, Optional, Dict, Callable, Set
 
 import numpy
 import itertools
 from decimal import Decimal
+from datetime import datetime
 
 import pandas
+
+
+class PriceVolume(NamedTuple):
+    price: Decimal
+    volume: Decimal
+
+
+class CurrencyTrade(NamedTuple):
+    direction: str
+    pair: str
+    quantity: Decimal
+    price: Decimal
+    capped: bool
+
+
+class CurrencyBalance(object):
+    """
+    Model of a currency balance.
+    """
+
+    def __init__(self, currency: str, amount: Decimal):
+        self._currency = currency
+        self._amount = amount
+
+    @property
+    def currency(self) -> str:
+        return self._currency
+
+    @property
+    def amount(self) -> Decimal:
+        return self._amount
+
+    def __repr__(self):
+        return '[{} {}]'.format(self.currency, self.amount)
+
+    def __hash__(self):
+        return hash(self.currency + str(self.amount))
+
+    def __eq__(self, other):
+        return (self.currency == other.currency) and (self.amount == other.amount)
+
+    def __ne__(self, other):
+        return not self == other
+
+
+class ForexQuote(NamedTuple):
+    """
+    Models a forex quote.
+    """
+    timestamp: Optional[datetime]
+    bid: Optional[Type[PriceVolume]]
+    ask: Optional[Type[PriceVolume]]
+
+ForexQuote.is_complete = lambda quote: quote.bid is not None and quote.ask is not None
+
+
+@total_ordering
+class CurrencyPair(object):
+    """
+    Models a currency pair.
+    """
+
+    def __init__(self, base_currency_code: str, quote_currency_code: str):
+        """
+        The quotation EUR/USD 1.2500 means that one euro is exchanged for 1.2500 US dollars.
+        Here, EUR is the base currency and USD is the quote currency(counter currency).
+        :param base_currency_code: currency that is quoted
+        :param quote_currency_code: currency that is used as the reference
+        """
+        self._base_currency_code = base_currency_code
+        self._quote_currency_code = quote_currency_code
+
+    def buy(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[Dict[str,
+                                                                                                    CurrencyBalance], CurrencyTrade]:
+        """
+        Computes the balance after the buy has taken place.
+        Example, provided volume is sufficient:
+            quote = EUR/USD <1.15, 1.16>, volume = +1 ---> Balances: EUR = +1, USD = -1.16
+
+        :param quote: ForexQuote instance
+        :param volume:
+        :param illimited_volume: emulates infinite liquidity
+        :return:
+        """
+        price = quote.ask.price
+        if illimited_volume:
+            allowed_volume = volume
+
+        else:
+            allowed_volume = min(volume, quote.ask.volume)
+
+        capped = numpy.NaN
+        if allowed_volume < volume:
+            capped = allowed_volume
+
+        balances = {self.base: CurrencyBalance(self.base, allowed_volume),
+                    self.quote: CurrencyBalance(self.quote, Decimal(allowed_volume * price * -1))
+                    }
+        trade = CurrencyTrade('buy', repr(self), allowed_volume, price, capped)
+        return balances, trade
+
+    def sell(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[Dict[str,
+                                                                                                     CurrencyBalance],CurrencyTrade]:
+        """
+        Computes the balance after the sell has taken place.
+        Example, provided volume is sufficient:
+            quote = EUR/USD <1.15, 1.16>, volume = 1 ---> Balances: EUR = -1, USD = +1.15
+
+        :param quote: ForexQuote instance
+        :param volume:
+        :param illimited_volume: emulates infinite liquidity
+        :return:
+        """
+        volume = abs(volume)
+        price = quote.bid.price
+        if illimited_volume:
+            allowed_volume = volume
+
+        else:
+            allowed_volume = min(volume, quote.bid.volume)
+
+        capped = numpy.NaN
+        if allowed_volume < volume:
+            capped = allowed_volume
+
+        balances = {self.base: CurrencyBalance(self.base, Decimal(allowed_volume * -1)),
+                    self.quote: CurrencyBalance(self.quote, Decimal(allowed_volume * price))}
+
+        trade = CurrencyTrade('sell', repr(self), Decimal(allowed_volume * -1), price, capped)
+        return balances, trade
+
+    def buy_currency(self, currency: str, volume: Decimal, quote: ForexQuote, illimited_volume: bool = False) -> Tuple[
+        Dict[str, CurrencyBalance], CurrencyTrade]:
+        """
+
+        :param currency: currency to buy
+        :param volume: amount to buy denominated in currency
+        :param quote: current quote (ForexQuote instance)
+        :param illimited_volume: emulates infinite liquidity
+        :return: resulting balance and performed trades (balance, performed_trade)
+        """
+        assert currency in self.assets, 'currency {} not in pair {}'.format(currency, self)
+        logging.debug('buying {} {} using pair {}'.format(volume, currency, self))
+        if currency == self.base:
+            # Direct quotation
+            balances, performed_trade = self.buy(quote, volume, illimited_volume)
+
+        else:
+            # Indirect quotation
+            target_volume = Decimal(volume) / quote.bid.price
+            balances, performed_trade = self.sell(quote, target_volume, illimited_volume)
+
+        return balances, performed_trade
+
+    def sell_currency(self, currency: str, volume: Decimal, quote: ForexQuote, illimited_volume: bool = False) -> Tuple[
+        Dict[str, CurrencyBalance], CurrencyTrade]:
+        """
+
+        :param currency:
+        :param volume: amount to buy denominated in currency
+        :param quote: current quote (ForexQuote instance)
+        :param illimited_volume: emulates infinite liquidity
+        :return: resulting balance and performed trades (balance, performed_trade)
+        """
+        assert currency in self.assets, 'currency {} not in pair {}'.format(currency, self)
+        logging.debug('selling {} {} using pair {}'.format(volume, currency, self))
+        if currency == self.base:
+            # Direct quotation
+            balance, performed_trade = self.sell(quote, volume, illimited_volume)
+
+        else:
+            # Indirect quotation
+            target_volume = Decimal(volume) / quote.ask.price
+            balance, performed_trade = self.buy(quote, target_volume, illimited_volume)
+
+        return balance, performed_trade
+
+    def convert(self, currency: str, amount: Decimal, quote: ForexQuote):
+        if currency == self.base:
+            destination_currency = self.quote
+
+        else:
+            destination_currency = self.base
+
+        if amount >= 0:
+            balances, trade = self.sell_currency(currency, amount, quote, illimited_volume=True)
+            return abs(balances[destination_currency].amount)
+
+        else:
+            balances, trade = self.buy_currency(currency, abs(amount), quote, illimited_volume=True)
+            return abs(balances[destination_currency].amount) * -1
+
+    @property
+    def assets(self) -> Set[str]:
+        return {self._base_currency_code, self._quote_currency_code}
+
+    @property
+    def quote(self) -> str:
+        return self._quote_currency_code
+
+    @property
+    def base(self) -> str:
+        return self._base_currency_code
+
+    def to_direct(self, separator='/') -> str:
+        return '{}{}{}'.format(self.base, separator, self.quote)
+
+    def to_indirect(self, separator='/') -> str:
+        return '{}{}{}'.format(self.quote, separator, self.base)
+
+    def __repr__(self):
+        return '<{}/{}>'.format(self.base, self.quote)
+
+    def __hash__(self):
+        return hash(self.base + ',' + self.quote)
+
+    def __eq__(self, other):
+        return (self.base == other.base) and (self.quote == other.quote)
+
+    def __ne__(self, other):
+        return not self == other
+
+    def __le__(self, other):
+        return repr(self) <= repr(other)
 
 
 @total_ordering
@@ -13,7 +239,8 @@ class ArbitrageStrategy(object):
     """
     Models an arbitrage strategy.
     """
-    def __init__(self, pair1, pair2, pair3):
+
+    def __init__(self, pair1: CurrencyPair, pair2: CurrencyPair, pair3: CurrencyPair):
         """
 
         :param pair1: CurrencyPair instance
@@ -45,10 +272,11 @@ class ArbitrageStrategy(object):
         return repr(self) <= repr(other)
 
     @property
-    def pairs(self):
-        return tuple(sorted([self._pair1, self._pair2, self._pair3]))
+    def pairs(self) -> Tuple[CurrencyPair, CurrencyPair, CurrencyPair]:
+        sorted_pairs = sorted([self._pair1, self._pair2, self._pair3])
+        return sorted_pairs[0], sorted_pairs[1], sorted_pairs[2]
 
-    def update_quotes(self, order_book_callbak):
+    def update_quotes(self, order_book_callbak: Callable):
         """
 
         :param order_book_callbak: retrieves quote for given CurrencyPair instance
@@ -116,9 +344,9 @@ class ArbitrageStrategy(object):
                 currency_next = next_pair.quote
 
             balance_initial, trade_initial = pair1.buy_currency(currency_initial, 1, initial_quote, illimited_volume)
-            balance_next, trade_next = next_pair.sell_currency(currency_initial, balance_initial[currency_initial],
+            balance_next, trade_next = next_pair.sell_currency(currency_initial, balance_initial[currency_initial].amount,
                                                                next_quote, illimited_volume)
-            balance_final, trade_final = final_pair.sell_currency(currency_next, balance_next[currency_next],
+            balance_final, trade_final = final_pair.sell_currency(currency_next, balance_next[currency_next].amount,
                                                                   final_quote, illimited_volume)
 
             balance1_series = pandas.Series(balance_initial, name='initial')
@@ -141,196 +369,11 @@ class ArbitrageStrategy(object):
         return opportunities
 
 
-@total_ordering
-class CurrencyPair(object):
-    """
-    Models a currency pair.
-    """
-    def __init__(self, base_currency_code, quote_currency_code):
-        """
-        The quotation EUR/USD 1.2500 means that one euro is exchanged for 1.2500 US dollars.
-        Here, EUR is the base currency and USD is the quote currency(counter currency).
-        :param base_currency_code: currency that is quoted
-        :param quote_currency_code: currency that is used as the reference
-        """
-        self._base_currency_code = base_currency_code
-        self._quote_currency_code = quote_currency_code
-
-    def buy(self, quote, volume, illimited_volume=False):
-        """
-        Computes the balance after the buy has taken place.
-        Example, provided volume is sufficient:
-            quote = EUR/USD <1.15, 1.16>, volume = +1 ---> Balances: EUR = +1, USD = -1.16
-
-        :param quote: ForexQuote instance
-        :param volume:
-        :param illimited_volume: emulates infinite liquidity
-        :return:
-        """
-        price = quote.ask['price']
-        if illimited_volume:
-            allowed_volume = volume
-
-        else:
-            allowed_volume = min(volume, quote.ask['volume'])
-
-        capped = numpy.NaN
-        if allowed_volume < volume:
-            capped = allowed_volume
-
-        balance = {self.base: allowed_volume, self.quote: allowed_volume * price * -1}
-        trade = {'direction': 'buy', 'pair': repr(self), 'quantity': allowed_volume, 'price': price, 'capped': capped}
-        return balance, trade
-
-    def sell(self, quote, volume, illimited_volume=False):
-        """
-        Computes the balance after the sell has taken place.
-        Example, provided volume is sufficient:
-            quote = EUR/USD <1.15, 1.16>, volume = 1 ---> Balances: EUR = -1, USD = +1.15
-
-        :param quote: ForexQuote instance
-        :param volume:
-        :param illimited_volume: emulates infinite liquidity
-        :return:
-        """
-        volume = abs(volume)
-        price = quote.bid['price']
-        if illimited_volume:
-            allowed_volume = volume
-
-        else:
-            allowed_volume = min(volume, quote.bid['volume'])
-
-        capped = numpy.NaN
-        if allowed_volume < volume:
-            capped = allowed_volume
-
-        balance = {self.base: allowed_volume * -1, self.quote: allowed_volume * price}
-        trade = {'direction': 'sell', 'pair': repr(self), 'quantity': allowed_volume * -1, 'price': price, 'capped': capped}
-        return balance, trade
-
-    def buy_currency(self, currency, volume, quote, illimited_volume=False):
-        """
-
-        :param currency: currency to buy
-        :param volume: amount to buy denominated in currency
-        :param quote: current quote (ForexQuote instance)
-        :param illimited_volume: emulates infinite liquidity
-        :return: resulting balance and performed trades (balance, performed_trade)
-        """
-        assert currency in self.assets, 'currency {} not in pair {}'.format(currency, self)
-        logging.debug('buying {} {} using pair {}'.format(volume, currency, self))
-        if currency == self.base:
-            # Direct quotation
-            balance, performed_trade = self.buy(quote, volume, illimited_volume)
-
-        else:
-            # Indirect quotation
-            target_volume = Decimal(volume) / quote.bid['price']
-            balance, performed_trade = self.sell(quote, target_volume, illimited_volume)
-
-        return balance, performed_trade
-
-    def sell_currency(self, currency, volume, quote, illimited_volume=False):
-        """
-
-        :param currency:
-        :param volume: amount to buy denominated in currency
-        :param quote: current quote (ForexQuote instance)
-        :param illimited_volume: emulates infinite liquidity
-        :return: resulting balance and performed trades (balance, performed_trade)
-        """
-        assert currency in self.assets, 'currency {} not in pair {}'.format(currency, self)
-        logging.debug('selling {} {} using pair {}'.format(volume, currency, self))
-        if currency == self.base:
-            # Direct quotation
-            balance, performed_trade = self.sell(quote, volume, illimited_volume)
-
-        else:
-            # Indirect quotation
-            target_volume = Decimal(volume) / quote.ask['price']
-            balance, performed_trade = self.buy(quote, target_volume, illimited_volume)
-
-        return balance, performed_trade
-
-    def convert(self, currency, amount, quote):
-        if currency == self.base:
-            destination_currency = self.quote
-
-        else:
-            destination_currency = self.base
-
-        if amount >= 0:
-            result = self.sell_currency(currency, amount, quote, illimited_volume=True)
-            return abs(result[0][destination_currency])
-
-        else:
-            result = self.buy_currency(currency, abs(amount), quote, illimited_volume=True)
-            return abs(result[0][destination_currency]) * -1
-
-    @property
-    def assets(self):
-        return {self._base_currency_code, self._quote_currency_code}
-
-    @property
-    def quote(self):
-        return self._quote_currency_code
-
-    @property
-    def base(self):
-        return self._base_currency_code
-
-    def to_direct(self, separator='/'):
-        return '{}{}{}'.format(self.base, separator, self.quote)
-
-    def to_indirect(self, separator='/'):
-        return '{}{}{}'.format(self.quote, separator, self.base)
-
-    def __repr__(self):
-        return '<{}/{}>'.format(self.base, self.quote)
-
-    def __hash__(self):
-        return hash(self.base + self.quote)
-
-    def __eq__(self, other):
-        return (self.base == other.base) and (self.quote == other.quote)
-
-    def __ne__(self, other):
-        return not self == other
-
-    def __le__(self, other):
-        return repr(self) <= repr(other)
-
-
-class ForexQuote(object):
-    """
-    Models a forex quote.
-    """
-    def __init__(self, timestamp, bid, ask):
-        self._timestamp = timestamp
-        self._bid = bid
-        self._ask = ask
-
-    @property
-    def timestamp(self):
-        return self._timestamp
-
-    @property
-    def bid(self):
-        return self._bid
-
-    @property
-    def ask(self):
-        return self._ask
-
-    def is_complete(self):
-        return self._bid is not None and self._ask is not None
-
-
 class CurrencyConverter(object):
     """
     Forex conversion.
     """
+
     def __init__(self, market, order_book_callback, direct=True):
         """
 
