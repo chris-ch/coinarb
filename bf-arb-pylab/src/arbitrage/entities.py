@@ -53,15 +53,34 @@ class CurrencyBalance(object):
         return not self == other
 
 
-class ForexQuote(NamedTuple):
+class ForexQuote(object):
     """
     Models a forex quote.
     """
-    timestamp: Optional[datetime]
-    bid: Optional[Type[PriceVolume]]
-    ask: Optional[Type[PriceVolume]]
+    def __init__(self, _timestamp: datetime=None, bid: PriceVolume=None, ask:PriceVolume=None):
+        if not _timestamp:
+            self._timestamp = datetime.now()
 
-ForexQuote.is_complete = lambda quote: quote.bid is not None and quote.ask is not None
+        else:
+            self._timestamp = _timestamp
+
+        self._bid = bid
+        self._ask = ask
+
+    @property
+    def timestamp(self):
+        return self._timestamp
+
+    @property
+    def bid(self):
+        return self._bid
+
+    @property
+    def ask(self):
+        return self._ask
+
+    def is_complete(self) -> bool:
+        return self.bid is not None and self.ask is not None
 
 
 @total_ordering
@@ -251,9 +270,9 @@ class ArbitrageStrategy(object):
         self._pair2 = pair2
         self._pair3 = pair3
         self._quotes = {
-            self._pair1: ForexQuote(None, None, None),
-            self._pair2: ForexQuote(None, None, None),
-            self._pair3: ForexQuote(None, None, None)
+            self._pair1: ForexQuote(),
+            self._pair2: ForexQuote(),
+            self._pair3: ForexQuote()
         }
 
     def __repr__(self):
