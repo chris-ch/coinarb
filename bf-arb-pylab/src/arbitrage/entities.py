@@ -434,7 +434,7 @@ class CurrencyConverter(object):
             target_pair = CurrencyPair(self.domestic_currency, currency)
 
         else:
-            raise LookupError('unable to converting {}'.format(currency))
+            raise LookupError('unable to convert {}'.format(currency))
 
         quote = self._order_book_callback(target_pair)
         return target_pair.convert(currency, amount, quote)

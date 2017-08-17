@@ -58,13 +58,13 @@ def main(args):
         logging.info('loading strategy from standard input')
         strategy = sys.stdin.readline()
 
-    def order_book_l1(client):
+    def order_book_l1(client: bitfinex.Client):
         """
         Creates a function returning a quote for a given currency pair.
         :param client:
         :return:
         """
-        def wrapped(pair):
+        def wrapped(pair: CurrencyPair):
             """
 
             :param pair: CurrencyPair instance
