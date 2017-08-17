@@ -2,8 +2,9 @@ import itertools
 import logging
 import re
 from time import sleep
+from typing import Callable, Any
 
-from arbitrage.entities import ArbitrageStrategy, CurrencyPair, CurrencyConverter
+from arbitrage.entities import ArbitrageStrategy, CurrencyPair, CurrencyConverter, ForexQuote
 
 
 def parse_pair_from_indirect(pair_code):
@@ -72,11 +73,14 @@ def create_strategies(pairs):
             yield ArbitrageStrategy(common_pair, indirect_pair_1, indirect_pair_2)
 
         else:
-            logging.debug('incompatible combination: {}, {}, {} not in {}'.format(common_pair, indirect_pair_1, indirect_pair_2, pairs))
+            logging.debug(
+                'incompatible combination: {}, {}, {} not in {}'.format(common_pair, indirect_pair_1, indirect_pair_2,
+                                                                        pairs))
             continue
 
 
-def scan_arbitrage_opportunities(strategy, order_book_callbak, bitfinex_client, illimited_volume):
+def scan_arbitrage_opportunities(strategy, order_book_callbak: Callable[[Any], Callable[[CurrencyPair], ForexQuote]],
+                                 bitfinex_client, illimited_volume):
     """
     Scanning arbitrage opportunities over the indicated pairs.
 
@@ -92,7 +96,7 @@ def scan_arbitrage_opportunities(strategy, order_book_callbak, bitfinex_client, 
             result = strategy.find_opportunities(illimited_volume)
             for trades, balances in result:
                 market = ('btc', balances['currency'])
-                converter = CurrencyConverter(market, order_book_callbak)
+                converter = CurrencyConverter(market, order_book_callbak(bitfinex_client))
                 bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
                 if bitcoin_amount > 0:
                     logging.info('residual value: {}'.format(bitcoin_amount))

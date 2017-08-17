@@ -1,6 +1,6 @@
 import logging
 from functools import total_ordering
-from typing import Tuple, Iterable, Mapping, Any, Type, NamedTuple, Optional, Dict, Callable, Set
+from typing import Tuple, NamedTuple, Dict, Callable, Set
 
 import numpy
 import itertools
@@ -57,7 +57,8 @@ class ForexQuote(object):
     """
     Models a forex quote.
     """
-    def __init__(self, _timestamp: datetime=None, bid: PriceVolume=None, ask:PriceVolume=None):
+
+    def __init__(self, _timestamp: datetime = None, bid: PriceVolume = None, ask: PriceVolume = None):
         if not _timestamp:
             self._timestamp = datetime.now()
 
@@ -68,15 +69,15 @@ class ForexQuote(object):
         self._ask = ask
 
     @property
-    def timestamp(self):
+    def timestamp(self) -> datetime:
         return self._timestamp
 
     @property
-    def bid(self):
+    def bid(self) -> PriceVolume:
         return self._bid
 
     @property
-    def ask(self):
+    def ask(self) -> PriceVolume:
         return self._ask
 
     def is_complete(self) -> bool:
@@ -129,7 +130,7 @@ class CurrencyPair(object):
         return balances, trade
 
     def sell(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[Dict[str,
-                                                                                                     CurrencyBalance],CurrencyTrade]:
+                                                                                                     CurrencyBalance], CurrencyTrade]:
         """
         Computes the balance after the sell has taken place.
         Example, provided volume is sufficient:
@@ -176,7 +177,7 @@ class CurrencyPair(object):
 
         else:
             # Indirect quotation
-            target_volume = Decimal(volume) / quote.bid.price
+            target_volume = Decimal(volume / quote.bid.price)
             balances, performed_trade = self.sell(quote, target_volume, illimited_volume)
 
         return balances, performed_trade
@@ -213,11 +214,13 @@ class CurrencyPair(object):
 
         if amount >= 0:
             balances, trade = self.sell_currency(currency, amount, quote, illimited_volume=True)
-            return abs(balances[destination_currency].amount)
+            amount = balances[destination_currency].amount
+            return abs(amount)
 
         else:
             balances, trade = self.buy_currency(currency, abs(amount), quote, illimited_volume=True)
-            return abs(balances[destination_currency].amount) * -1
+            amount = balances[destination_currency].amount
+            return abs(amount) * -1
 
     @property
     def assets(self) -> Set[str]:
@@ -231,10 +234,10 @@ class CurrencyPair(object):
     def base(self) -> str:
         return self._base_currency_code
 
-    def to_direct(self, separator='/') -> str:
+    def to_direct(self, separator: str='/') -> str:
         return '{}{}{}'.format(self.base, separator, self.quote)
 
-    def to_indirect(self, separator='/') -> str:
+    def to_indirect(self, separator: str='/') -> str:
         return '{}{}{}'.format(self.quote, separator, self.base)
 
     def __repr__(self):
@@ -295,7 +298,7 @@ class ArbitrageStrategy(object):
         sorted_pairs = sorted([self._pair1, self._pair2, self._pair3])
         return sorted_pairs[0], sorted_pairs[1], sorted_pairs[2]
 
-    def update_quotes(self, order_book_callbak: Callable):
+    def update_quotes(self, order_book_callbak: Callable[[CurrencyPair], ForexQuote]):
         """
 
         :param order_book_callbak: retrieves quote for given CurrencyPair instance
@@ -312,7 +315,7 @@ class ArbitrageStrategy(object):
         }
 
     @property
-    def quotes(self):
+    def quotes(self) -> Dict[CurrencyPair, ForexQuote]:
         """
 
         :return:
@@ -320,7 +323,7 @@ class ArbitrageStrategy(object):
         return self._quotes
 
     @property
-    def quotes_valid(self):
+    def quotes_valid(self) -> bool:
         """
 
         :return:
@@ -331,7 +334,7 @@ class ArbitrageStrategy(object):
 
         return is_valid
 
-    def find_opportunities(self, illimited_volume, skip_capped=True):
+    def find_opportunities(self, illimited_volume: bool, skip_capped: bool=True):
         """
 
         :param illimited_volume: emulates infinite liquidity
@@ -363,7 +366,8 @@ class ArbitrageStrategy(object):
                 currency_next = next_pair.quote
 
             balance_initial, trade_initial = pair1.buy_currency(currency_initial, 1, initial_quote, illimited_volume)
-            balance_next, trade_next = next_pair.sell_currency(currency_initial, balance_initial[currency_initial].amount,
+            balance_next, trade_next = next_pair.sell_currency(currency_initial,
+                                                               balance_initial[currency_initial].amount,
                                                                next_quote, illimited_volume)
             balance_final, trade_final = final_pair.sell_currency(currency_next, balance_next[currency_next].amount,
                                                                   final_quote, illimited_volume)
@@ -393,7 +397,7 @@ class CurrencyConverter(object):
     Forex conversion.
     """
 
-    def __init__(self, market, order_book_callback, direct=True):
+    def __init__(self, market: Tuple[str, str], order_book_callback: Callable[[CurrencyPair], ForexQuote], direct: bool=True):
         """
 
         :param market_name: market name is the currency pair, for example ('USD', 'EUR')
@@ -409,14 +413,14 @@ class CurrencyConverter(object):
         self._order_book_callback = order_book_callback
 
     @property
-    def domestic_currency(self):
+    def domestic_currency(self) -> str:
         return self._domestic_currency
 
     @property
-    def foreign_currency(self):
+    def foreign_currency(self) -> str :
         return self._foreign_currency
 
-    def exchange(self, currency, amount):
+    def exchange(self, currency: str, amount: Decimal) -> Decimal:
         """
 
         :param currency:
@@ -435,10 +439,10 @@ class CurrencyConverter(object):
         quote = self._order_book_callback(target_pair)
         return target_pair.convert(currency, amount, quote)
 
-    def sell(self, currency, amount):
-        assert amount > 0
+    def sell(self, currency: str, amount: Decimal) -> Decimal:
+        assert amount >= 0
         return self.exchange(currency, amount)
 
-    def buy(self, currency, amount):
-        assert amount > 0
+    def buy(self, currency: str, amount: Decimal) -> Decimal:
+        assert amount >= 0
         return self.exchange(currency, -amount)

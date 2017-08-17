@@ -12,7 +12,7 @@ import requests_cache
 from decimal import Decimal
 
 from arbitrage import scan_arbitrage_opportunities, parse_pair_from_indirect, parse_strategy
-from arbitrage.entities import ForexQuote, CurrencyPair
+from arbitrage.entities import ForexQuote, CurrencyPair, PriceVolume
 
 
 def parse_symbols_bitfinex(pairs):
@@ -73,14 +73,12 @@ def main(args):
             result = client.order_book(pair.to_indirect(separator=''))
             result_bid = result['bids'][0]
             result_ask = result['asks'][0]
-            bid = dict()
-            ask = dict()
-            bid['price'] = round(Decimal(result_bid['price']), 10)
-            ask['price'] = round(Decimal(result_ask['price']), 10)
-            bid['volume'] = round(Decimal(result_bid['amount']), 10)
-            ask['volume'] = round(Decimal(result_ask['amount']), 10)
+            bid_price = round(Decimal(result_bid['price']), 10)
+            ask_price = round(Decimal(result_ask['price']), 10)
+            bid_volume = round(Decimal(result_bid['amount']), 10)
+            ask_volume = round(Decimal(result_ask['amount']), 10)
             timestamp = result_bid['timestamp']
-            return ForexQuote(timestamp, bid, ask)
+            return ForexQuote(timestamp, PriceVolume(bid_price, bid_volume), PriceVolume(ask_price, ask_volume))
 
         return wrapped
 
