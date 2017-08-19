@@ -415,13 +415,17 @@ class ArbitrageStrategy(object):
         :return:
         """
         logging.info('accumulating currency: {}'.format(self.indirect_pairs[0].base))
-        balance_initial, trade_initial = self.indirect_pairs[0].buy(self.quotes[self.indirect_pairs[0]], 1, illimited_volume)
-        print(self.indirect_pairs[0], 'buy', self.quotes[self.indirect_pairs[0]], balance_initial[self.indirect_pairs[0].quote])
-        balance_next, trade_next = self.indirect_pairs[1].buy(self.quotes[self.indirect_pairs[1]],
+        initial_amount = Decimal(1)
+        balance_initial, trade_initial = self.indirect_pairs[0].sell(self.quotes[self.indirect_pairs[0]], initial_amount, illimited_volume)
+        balance_next, trade_next = self.indirect_pairs[1].sell(self.quotes[self.indirect_pairs[1]],
                                                            balance_initial[self.indirect_pairs[0].quote], illimited_volume)
-        print(self.indirect_pairs[1], 'buy', self.quotes[self.indirect_pairs[1]], balance_initial[self.indirect_pairs[0].quote])
-        balance_final, trade_final = self.direct_pair.sell_currency(self.indirect_pairs[0].base, 1,
+        balance_final, trade_final = self.direct_pair.buy_currency(self.indirect_pairs[0].base, initial_amount,
                                                                     self.quotes[self.direct_pair], illimited_volume)
+        """
+        balance_sell_eur_chf, trade_sell_eur_chf = pair_eur_chf.sell(quote_eur_chf, Decimal(1000), illimited_volume=True)
+        balance_sell_chf_usd, trade_sell_chf_usd = pair_chf_usd.sell(quote_chf_usd, balance_sell_eur_chf['chf'], illimited_volume=True)
+        balance_buy_eur_usd, trade_buy_eur_usd = pair_eur_usd.buy(quote_eur_usd, Decimal(1000), illimited_volume=True)
+        """
         balance1_series = pandas.Series(balance_initial, name='initial')
         balance2_series = pandas.Series(balance_next, name='next')
         balance3_series = pandas.Series(balance_final, name='final')
