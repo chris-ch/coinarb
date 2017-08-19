@@ -10,9 +10,24 @@ from datetime import datetime
 import pandas
 
 
-class PriceVolume(NamedTuple):
+class PriceVolume(object):
     price: Decimal
     volume: Decimal
+
+    def __init__(self, price, volume):
+        self._price = price
+        self._volume = volume
+
+    @property
+    def price(self):
+        return self._price
+
+    @property
+    def volume(self):
+        return self._volume
+
+    def __repr__(self):
+        return '{}@{}'.format(self.volume, self.price)
 
 
 class CurrencyTrade(NamedTuple):
@@ -83,6 +98,9 @@ class ForexQuote(object):
     def is_complete(self) -> bool:
         return self.bid is not None and self.ask is not None
 
+    def __repr__(self):
+        return '[{}:{}/{}]'.format(self.timestamp, self.bid, self.ask)
+
 
 @total_ordering
 class CurrencyPair(object):
@@ -101,7 +119,7 @@ class CurrencyPair(object):
         self._quote_currency_code = quote_currency_code
 
     def buy(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[Dict[str,
-                                                                                                    CurrencyBalance], CurrencyTrade]:
+                                                                                                    Decimal], CurrencyTrade]:
         """
         Computes the balance after the buy has taken place.
         Example, provided volume is sufficient:
@@ -123,14 +141,14 @@ class CurrencyPair(object):
         if allowed_volume < volume:
             capped = allowed_volume
 
-        balances = {self.base: CurrencyBalance(self.base, allowed_volume),
-                    self.quote: CurrencyBalance(self.quote, Decimal(allowed_volume * price * -1))
+        balances = {self.base: CurrencyBalance(self.base, allowed_volume).amount,
+                    self.quote: CurrencyBalance(self.quote, Decimal(allowed_volume * price * -1)).amount
                     }
         trade = CurrencyTrade('buy', repr(self), allowed_volume, price, capped)
         return balances, trade
 
     def sell(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[Dict[str,
-                                                                                                     CurrencyBalance], CurrencyTrade]:
+                                                                                                     Decimal], CurrencyTrade]:
         """
         Computes the balance after the sell has taken place.
         Example, provided volume is sufficient:
@@ -153,8 +171,8 @@ class CurrencyPair(object):
         if allowed_volume < volume:
             capped = allowed_volume
 
-        balances = {self.base: CurrencyBalance(self.base, Decimal(allowed_volume * -1)),
-                    self.quote: CurrencyBalance(self.quote, Decimal(allowed_volume * price))}
+        balances = {self.base: CurrencyBalance(self.base, Decimal(allowed_volume * -1)).amount,
+                    self.quote: CurrencyBalance(self.quote, Decimal(allowed_volume * price)).amount}
 
         trade = CurrencyTrade('sell', repr(self), Decimal(allowed_volume * -1), price, capped)
         return balances, trade
@@ -269,9 +287,31 @@ class ArbitrageStrategy(object):
         :param pair2: CurrencyPair instance
         :param pair3: CurrencyPair instance
         """
-        self._pair1 = pair1
-        self._pair2 = pair2
-        self._pair3 = pair3
+        pairs = {pair1, pair2, pair3}
+        bases = [pair.base for pair in pairs]
+        bases_count = dict((base, len(list(group))) for base, group in itertools.groupby(sorted(bases)))
+        unique_bases = sorted([base for base in bases_count if bases_count[base] == 1])
+        if len(unique_bases) == 0:
+            raise SystemError('cannot arbitrage pairs: {}'.format(pairs))
+
+        common_currency = unique_bases[0]
+        direct_pair = None
+        for pair in pairs:
+            if common_currency not in pair.assets:
+                direct_pair = pair
+                break
+
+        if direct_pair is None:
+            raise SystemError('cannot arbitrage pairs: {}'.format(pairs))
+
+        self._pair1 = direct_pair
+        indirect_pairs = list(pairs.difference({direct_pair}))
+        if common_currency == indirect_pairs[0].quote:
+            self._pair2, self._pair3 = indirect_pairs[0], indirect_pairs[1]
+
+        else:
+            self._pair3, self._pair2 = indirect_pairs[0], indirect_pairs[1]
+
         self._quotes = {
             self._pair1: ForexQuote(),
             self._pair2: ForexQuote(),
@@ -279,19 +319,27 @@ class ArbitrageStrategy(object):
         }
 
     def __repr__(self):
-        return '[{},{},{}]'.format(*self.pairs)
+        return '[{},{}]'.format(self.indirect_pairs, self.direct_pair)
 
     def __hash__(self):
         return hash(repr(self))
 
     def __eq__(self, other):
-        return self.pairs == other.pairs
+        return self.indirect_pairs == other.indirect_pairs and self.direct_pair == other.direct_pair
 
     def __ne__(self, other):
         return not self == other
 
     def __le__(self, other):
         return repr(self) <= repr(other)
+
+    @property
+    def direct_pair(self) -> CurrencyPair:
+        return self._pair1
+
+    @property
+    def indirect_pairs(self) -> Tuple[CurrencyPair, CurrencyPair]:
+        return self._pair2, self._pair3
 
     @property
     def pairs(self) -> Tuple[CurrencyPair, CurrencyPair, CurrencyPair]:
@@ -344,52 +392,43 @@ class ArbitrageStrategy(object):
         logging.info('trying strategy'.format(self))
         opportunities = list()
         for pair1, pair2, pair3 in itertools.permutations(self.pairs):
-            currency_initial = pair1.quote
-            logging.info('accumulating currency: {}'.format(pair1.base))
-            initial_quote = self.quotes[pair1]
-            if currency_initial in pair2.assets:
-                next_pair = pair2
-                next_quote = self.quotes[pair2]
-                final_pair = pair3
-                final_quote = self.quotes[pair3]
-
-            else:
-                next_pair = pair3
-                next_quote = self.quotes[pair3]
-                final_pair = pair2
-                final_quote = self.quotes[pair2]
-
-            if next_pair.base != currency_initial:
-                currency_next = next_pair.base
-
-            else:
-                currency_next = next_pair.quote
-
-            balance_initial, trade_initial = pair1.buy_currency(currency_initial, 1, initial_quote, illimited_volume)
-            balance_next, trade_next = next_pair.sell_currency(currency_initial,
-                                                               balance_initial[currency_initial].amount,
-                                                               next_quote, illimited_volume)
-            balance_final, trade_final = final_pair.sell_currency(currency_next, balance_next[currency_next].amount,
-                                                                  final_quote, illimited_volume)
-
-            balance1_series = pandas.Series(balance_initial, name='initial')
-            balance2_series = pandas.Series(balance_next, name='next')
-            balance3_series = pandas.Series(balance_final, name='final')
-            balance_series = [balance1_series, balance2_series, balance3_series]
-            balances_by_currency = pandas.concat(balance_series, axis=1).sum(axis=1)
+            balances_by_currency, trades_df = self.apply_arbitrage(pair1, pair2, pair3, illimited_volume)
             remainder = balances_by_currency[pair1.base]
-
-            trades_df = pandas.DataFrame([trade_initial, trade_next, trade_final])
             if not skip_capped or trades_df['capped'].count() == 0:
                 logging.info('adding new opportunity:\n{}'.format(trades_df))
                 logging.info('resulting balances:\n{}'.format(balances_by_currency))
                 logging.info('remaining {} {}'.format(remainder, pair1.base))
-                opportunities.append((trades_df, {'remainder': round(Decimal(remainder), 10), 'currency': pair1.base}))
+                opportunities.append((trades_df, {'remainder': round(Decimal(remainder), 10), 'currency': pair1.base}, balances_by_currency))
 
             else:
                 logging.info('no opportunity')
 
         return opportunities
+
+    def apply_arbitrage(self, illimited_volume: bool):
+        """
+
+        :param pair1:
+        :param pair2:
+        :param pair3:
+        :param illimited_volume:
+        :return:
+        """
+        logging.info('accumulating currency: {}'.format(self.indirect_pairs[0].base))
+        balance_initial, trade_initial = self.indirect_pairs[0].buy(self.quotes[self.indirect_pairs[0]], 1, illimited_volume)
+        print(self.indirect_pairs[0], 'buy', self.quotes[self.indirect_pairs[0]], balance_initial[self.indirect_pairs[0].quote])
+        balance_next, trade_next = self.indirect_pairs[1].buy(self.quotes[self.indirect_pairs[1]],
+                                                           balance_initial[self.indirect_pairs[0].quote], illimited_volume)
+        print(self.indirect_pairs[1], 'buy', self.quotes[self.indirect_pairs[1]], balance_initial[self.indirect_pairs[0].quote])
+        balance_final, trade_final = self.direct_pair.sell_currency(self.indirect_pairs[0].base, 1,
+                                                                    self.quotes[self.direct_pair], illimited_volume)
+        balance1_series = pandas.Series(balance_initial, name='initial')
+        balance2_series = pandas.Series(balance_next, name='next')
+        balance3_series = pandas.Series(balance_final, name='final')
+        balance_series = [balance1_series, balance2_series, balance3_series]
+        balances_df = pandas.concat(balance_series, axis=1)
+        trades_df = pandas.DataFrame([trade_initial, trade_next, trade_final])
+        return balances_df, trades_df
 
 
 class CurrencyConverter(object):

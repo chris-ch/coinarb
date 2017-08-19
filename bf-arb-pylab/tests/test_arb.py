@@ -5,6 +5,7 @@ import bitfinex
 from decimal import Decimal
 from datetime import datetime
 
+import itertools
 import requests_cache
 
 from arbitrage import parse_pair_from_indirect, create_strategies, parse_currency_pair, parse_strategy
@@ -59,6 +60,61 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         self.assertEqual(converter.sell('gbp', Decimal('0.67')), Decimal(1))  # 0.67 GBP needed for receiving 1 USD
         self.assertAlmostEqual(converter.buy('gbp', Decimal('1.')), Decimal(-1.52), places=2)  # 1 GBP costs 1.52 USD
 
+    def test_arbitrage_ordering(self):
+        currencies = ('A', 'B', 'C')
+        pairs = list()
+        for currency1, currency2 in itertools.permutations(currencies, 2):
+            pairs.append('{}/{}'.format(currency1, currency2))
+
+        for pair1, pair2, pair3 in itertools.permutations(pairs, 3):
+            if set(pair1.split('/')) == set(pair2.split('/')):
+                continue
+
+            if set(pair1.split('/')) == set(pair3.split('/')):
+                continue
+
+            if set(pair2.split('/')) == set(pair3.split('/')):
+                continue
+
+            input = '[<{}>,<{}>,<{}>]'.format(pair1, pair2, pair3)
+            strategy = parse_strategy(input)
+            self.assertEqual(strategy.indirect_pairs[0].quote, strategy.indirect_pairs[1].base)
+            self.assertNotEqual(strategy.direct_pair.base, strategy.indirect_pairs[0].quote)
+            self.assertNotEqual(strategy.direct_pair.quote, strategy.indirect_pairs[1].base)
+
+    def test_pair_trading(self):
+        pair_eur_chf = CurrencyPair('eur', 'chf')
+        quote_eur_chf = ForexQuote(bid=PriceVolume(1.14, 100), ask=PriceVolume(1.15, 100))
+        balance_buy_eur_chf, trade_buy_eur_chf = pair_eur_chf.buy(quote_eur_chf, 1, illimited_volume=True)
+        self.assertEqual(balance_buy_eur_chf['eur'], 1)
+        self.assertAlmostEqual(balance_buy_eur_chf['chf'], -1.15, places=18)
+        self.assertEqual(trade_buy_eur_chf.direction, 'buy')
+        self.assertEqual(trade_buy_eur_chf.quantity, 1)
+        self.assertAlmostEqual(trade_buy_eur_chf.price, 1.15, places=18)
+
+        balance_sell_eur_chf, trade_sell_eur_chf = pair_eur_chf.sell(quote_eur_chf, 1, illimited_volume=True)
+        self.assertEqual(balance_sell_eur_chf['eur'], -1)
+        self.assertAlmostEqual(balance_sell_eur_chf['chf'], 1.14, places=18)
+        self.assertEqual(trade_sell_eur_chf.direction, 'sell')
+        self.assertEqual(trade_sell_eur_chf.quantity, -1)
+        self.assertAlmostEqual(trade_sell_eur_chf.price, 1.14, places=18)
+
+        pair_chf_usd = CurrencyPair('chf', 'usd')
+        quote_chf_usd = ForexQuote(bid=PriceVolume(Decimal('1.04'), 100), ask=PriceVolume(Decimal('1.05'), 100))
+        balance_buy_chf_usd, trade_buy_chf_usd = pair_chf_usd.buy(quote_chf_usd, 1, illimited_volume=True)
+        self.assertEqual(balance_buy_chf_usd['chf'], 1)
+        self.assertAlmostEqual(balance_buy_chf_usd['usd'], Decimal('-1.05'), places=18)
+        self.assertEqual(trade_buy_chf_usd.direction, 'buy')
+        self.assertEqual(trade_buy_chf_usd.quantity, 1)
+        self.assertAlmostEqual(trade_buy_chf_usd.price, Decimal('1.05'), places=18)
+
+        balance_buy_chf_usd, trade_buy_chf_usd = pair_chf_usd.buy(quote_chf_usd, Decimal('1.15'), illimited_volume=True)
+        self.assertAlmostEqual(balance_buy_chf_usd['chf'], Decimal('1.15'), places=18)
+        self.assertAlmostEqual(balance_buy_chf_usd['usd'], Decimal('-1.2075'), places=18)
+        self.assertEqual(trade_buy_chf_usd.direction, 'buy')
+        self.assertEqual(trade_buy_chf_usd.quantity, Decimal('1.15'))
+        self.assertAlmostEqual(trade_buy_chf_usd.price, Decimal('1.05'), places=18)
+
     def test_arbitrage(self):
         def quote_loader(pair):
             if pair == CurrencyPair('eur', 'chf'):
@@ -84,19 +140,35 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
 
         input = '[<eur/chf>,<chf/usd>,<usd/eur>]'
         strategy = parse_strategy(input)
+        self.assertEqual(strategy.direct_pair, CurrencyPair('usd', 'eur'))
+        self.assertEqual(strategy.indirect_pairs[0], CurrencyPair('eur', 'chf'))
+        self.assertEqual(strategy.indirect_pairs[1], CurrencyPair('chf', 'usd'))
         strategy.update_quotes(quote_loader)
         self.assertTrue(strategy.quotes_valid)
-        result = strategy.find_opportunities(illimited_volume=True)
-        for trades, balances in result:
-            print('--------------------')
-            print(trades)
-            print(balances)
-            market = ('usd', balances['currency'])
-            converter = CurrencyConverter(market, quote_loader)
-            remaining_amount = converter.exchange(balances['currency'], balances['remainder'])
-            if remaining_amount > 0:
-                logging.info('residual value: {}'.format(remaining_amount))
-                logging.info('trades:\n{}'.format(trades))
+        trades, balances = strategy.apply_arbitrage(illimited_volume=True)
+        print('--------------------')
+        print(trades)
+        print(balances)
+        """
+        EUR.CHF	1.14	1.15					
+        CHF.USD	1.04	1.05					
+        EUR.USD	1.19	1.2					
+                                    
+        EUR     CHF     USD					
+        1000	1140	1185.6	Indirect				
+        1000            1190    Direct				
+                                    
+        Indirect	  EUR.CHF       CHF.USD         Direct              Total
+        EUR	            -1000                          EUR   1000           0
+        CHF              1140         -1140					                0
+        USD	                0        1185.6            USD  -1190        -4.4
+        """
+        #market = ('usd', balances['currency'])
+        #converter = CurrencyConverter(market, quote_loader)
+        #remaining_amount = converter.exchange(balances['currency'], balances['remainder'])
+        #if remaining_amount > 0:
+        #    logging.info('residual value: {}'.format(remaining_amount))
+        #    logging.info('trades:\n{}'.format(trades))
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
