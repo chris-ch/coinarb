@@ -252,10 +252,10 @@ class CurrencyPair(object):
     def base(self) -> str:
         return self._base_currency_code
 
-    def to_direct(self, separator: str='/') -> str:
+    def to_direct(self, separator: str = '/') -> str:
         return '{}{}{}'.format(self.base, separator, self.quote)
 
-    def to_indirect(self, separator: str='/') -> str:
+    def to_indirect(self, separator: str = '/') -> str:
         return '{}{}{}'.format(self.quote, separator, self.base)
 
     def __repr__(self):
@@ -382,7 +382,7 @@ class ArbitrageStrategy(object):
 
         return is_valid
 
-    def find_opportunities(self, illimited_volume: bool, skip_capped: bool=True):
+    def find_opportunity(self, illimited_volume: bool, skip_capped: bool=True):
         """
 
         :param illimited_volume: emulates infinite liquidity
@@ -390,20 +390,20 @@ class ArbitrageStrategy(object):
         :return:
         """
         logging.info('trying strategy'.format(self))
-        opportunities = list()
-        for pair1, pair2, pair3 in itertools.permutations(self.pairs):
-            balances_by_currency, trades_df = self.apply_arbitrage(pair1, pair2, pair3, illimited_volume)
-            remainder = balances_by_currency[pair1.base]
-            if not skip_capped or trades_df['capped'].count() == 0:
-                logging.info('adding new opportunity:\n{}'.format(trades_df))
-                logging.info('resulting balances:\n{}'.format(balances_by_currency))
-                logging.info('remaining {} {}'.format(remainder, pair1.base))
-                opportunities.append((trades_df, {'remainder': round(Decimal(remainder), 10), 'currency': pair1.base}, balances_by_currency))
+        opportunity = None, None
+        balances_df, trades_df = self.apply_arbitrage(illimited_volume)
+        balances_by_currency = balances_df.sum(axis=1)
+        remainder = balances_by_currency.round(6)[balances_by_currency > 0]
+        if not skip_capped or trades_df['capped'].count() == 0:
+            logging.info('adding new opportunity:\n{}'.format(trades_df))
+            logging.info('resulting balances:\n{}'.format(balances_by_currency))
+            logging.info('remaining: {}'.format(remainder))
+            opportunity = trades_df, balances_by_currency
 
-            else:
-                logging.info('no opportunity')
+        else:
+            logging.info('no opportunity')
 
-        return opportunities
+        return opportunity
 
     def apply_arbitrage(self, illimited_volume: bool):
         """
@@ -416,16 +416,13 @@ class ArbitrageStrategy(object):
         """
         logging.info('accumulating currency: {}'.format(self.indirect_pairs[0].base))
         initial_amount = Decimal(1)
-        balance_initial, trade_initial = self.indirect_pairs[0].sell(self.quotes[self.indirect_pairs[0]], initial_amount, illimited_volume)
+        balance_initial, trade_initial = self.indirect_pairs[0].sell(self.quotes[self.indirect_pairs[0]],
+                                                                     initial_amount, illimited_volume)
         balance_next, trade_next = self.indirect_pairs[1].sell(self.quotes[self.indirect_pairs[1]],
-                                                           balance_initial[self.indirect_pairs[0].quote], illimited_volume)
+                                                               balance_initial[self.indirect_pairs[0].quote],
+                                                               illimited_volume)
         balance_final, trade_final = self.direct_pair.buy_currency(self.indirect_pairs[0].base, initial_amount,
-                                                                    self.quotes[self.direct_pair], illimited_volume)
-        """
-        balance_sell_eur_chf, trade_sell_eur_chf = pair_eur_chf.sell(quote_eur_chf, Decimal(1000), illimited_volume=True)
-        balance_sell_chf_usd, trade_sell_chf_usd = pair_chf_usd.sell(quote_chf_usd, balance_sell_eur_chf['chf'], illimited_volume=True)
-        balance_buy_eur_usd, trade_buy_eur_usd = pair_eur_usd.buy(quote_eur_usd, Decimal(1000), illimited_volume=True)
-        """
+                                                                   self.quotes[self.direct_pair], illimited_volume)
         balance1_series = pandas.Series(balance_initial, name='initial')
         balance2_series = pandas.Series(balance_next, name='next')
         balance3_series = pandas.Series(balance_final, name='final')
@@ -440,7 +437,8 @@ class CurrencyConverter(object):
     Forex conversion.
     """
 
-    def __init__(self, market: Tuple[str, str], order_book_callback: Callable[[CurrencyPair], ForexQuote], direct: bool=True):
+    def __init__(self, market: Tuple[str, str], order_book_callback: Callable[[CurrencyPair], ForexQuote],
+                 direct: bool = True):
         """
 
         :param market_name: market name is the currency pair, for example ('USD', 'EUR')
@@ -460,7 +458,7 @@ class CurrencyConverter(object):
         return self._domestic_currency
 
     @property
-    def foreign_currency(self) -> str :
+    def foreign_currency(self) -> str:
         return self._foreign_currency
 
     def exchange(self, currency: str, amount: Decimal) -> Decimal:

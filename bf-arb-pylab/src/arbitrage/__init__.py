@@ -25,28 +25,38 @@ def parse_pair_from_direct(pair_code):
     return CurrencyPair(pair_code[:len(pair_code) // 2], pair_code[len(pair_code) // 2:])
 
 
-def parse_currency_pair(pair_string, separator='/'):
+def parse_currency_pair(pair_string, separator='/', indirect_mode=False):
     """
 
     :param pair_string: format <pair_1/pair_2> with / used as separator
     :param separator:
+    :param indirect_mode: quote currency comes first
     :return:
     """
-    pair1, pair2 = pair_string.split(separator)
-    return CurrencyPair(pair1[1:], pair2[:-1])
+    part1, part2 = pair_string.split(separator)
+    if indirect_mode:
+        pair1, pair2 = part2[:-1], part1[1:]
+
+    else:
+        pair1, pair2 = part1[1:], part2[:-1]
+
+    return CurrencyPair(pair1, pair2)
 
 
-def parse_strategy(strategy_string):
+def parse_strategy(strategy_string, indirect_mode=False):
     """
-
     :param strategy_string: example [<btc/eth>,<usd/btc>,<usd/eth>]
+    :param indirect_mode: quote currency comes first
     :return:
     """
     pattern = re.match(r'^\[(.*),(.*),(.*)\]$', strategy_string.strip())
-    pair1 = pattern.group(1)
-    pair2 = pattern.group(2)
-    pair3 = pattern.group(3)
-    return ArbitrageStrategy(parse_currency_pair(pair1), parse_currency_pair(pair2), parse_currency_pair(pair3))
+    pair1_code = pattern.group(1)
+    pair2_code = pattern.group(2)
+    pair3_code = pattern.group(3)
+    pair1 = parse_currency_pair(pair1_code, indirect_mode=indirect_mode)
+    pair2 = parse_currency_pair(pair2_code, indirect_mode=indirect_mode)
+    pair3 = parse_currency_pair(pair3_code, indirect_mode=indirect_mode)
+    return ArbitrageStrategy(pair1, pair2, pair3)
 
 
 def create_strategies(pairs):
@@ -93,13 +103,13 @@ def scan_arbitrage_opportunities(strategy, order_book_callbak: Callable[[Any], C
         quotes = order_book_callbak(bitfinex_client)
         strategy.update_quotes(quotes)
         if strategy.quotes_valid:
-            result = strategy.find_opportunities(illimited_volume)
-            for trades, balances in result:
-                market = ('btc', balances['currency'])
-                converter = CurrencyConverter(market, order_book_callbak(bitfinex_client))
-                bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
-                if bitcoin_amount > 0:
-                    logging.info('residual value: {}'.format(bitcoin_amount))
-                    logging.info('trades:\n{}'.format(trades))
+            trades, balances = strategy.find_opportunity(illimited_volume)
+            print(balances)
+            #converter = CurrencyConverter(market, order_book_callbak(bitfinex_client))
+            #bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
+            #if bitcoin_amount > 0:
+            #    logging.info('residual value: {}'.format(bitcoin_amount))
+            #    logging.info('trades:\n{}'.format(trades))
+
         logging.info('---------------- sleeping 1 second ----------------')
         sleep(1)

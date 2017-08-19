@@ -126,7 +126,7 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         self.assertAlmostEqual(balance_buy_eur_usd['eur'], Decimal('1000'), places=18)
         self.assertAlmostEqual(balance_buy_eur_usd['usd'], Decimal('-1180'), places=18)
 
-    def test_arbitrage(self):
+    def test_arbitrage_1(self):
         def quote_loader(pair):
             if pair == CurrencyPair('eur', 'chf'):
                 bid = PriceVolume(Decimal('1.14'), Decimal(100))
@@ -152,6 +152,35 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         balances, trades = strategy.apply_arbitrage(illimited_volume=True)
         self.assertAlmostEqual(balances['next'].loc['usd'], Decimal('1.185600'), places=6)
         self.assertAlmostEqual(balances['final'].loc['usd'], Decimal('-1.183432'), places=6)
+
+    def test_arbitrage_2(self):
+        def quote_loader(pair):
+            if pair == CurrencyPair('eur', 'chf'):
+                bid = PriceVolume(Decimal('1.14'), Decimal(100))
+                ask = PriceVolume(Decimal('1.15'), Decimal(100))
+            elif pair == CurrencyPair('chf', 'usd'):
+                bid = PriceVolume(Decimal('1.04'), Decimal(100))
+                ask = PriceVolume(Decimal('1.05'), Decimal(100))
+            elif pair == CurrencyPair('eur', 'usd'):
+                bid = PriceVolume(Decimal('1.18'), Decimal(100))
+                ask = PriceVolume(Decimal('1.19'), Decimal(100))
+            else:
+                raise NotImplementedError('illegal pair: {}'.format(pair))
+
+            return ForexQuote(datetime(2017, 1, 1), bid, ask)
+
+        input = '[<eur/chf>,<chf/usd>,<eur/usd>]'
+        strategy = parse_strategy(input)
+        self.assertEqual(strategy.direct_pair, CurrencyPair('eur', 'usd'))
+        self.assertEqual(strategy.indirect_pairs[0], CurrencyPair('eur', 'chf'))
+        self.assertEqual(strategy.indirect_pairs[1], CurrencyPair('chf', 'usd'))
+        strategy.update_quotes(quote_loader)
+        self.assertTrue(strategy.quotes_valid)
+        balances, trades = strategy.apply_arbitrage(illimited_volume=True)
+        total = balances.sum(axis=1)
+        self.assertAlmostEqual(total['usd'], -0.0044, places=4)
+        self.assertAlmostEqual(total['chf'], 0, places=4)
+        self.assertAlmostEqual(total['eur'], 0, places=4)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')

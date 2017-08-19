@@ -52,7 +52,7 @@ def wss():
 
 def main(args):
     if args.strategy:
-        strategy = parse_strategy(args.strategy)
+        strategy = parse_strategy(args.strategy, indirect_mode=True)
 
     else:
         logging.info('loading strategy from standard input')
@@ -70,7 +70,8 @@ def main(args):
             :param pair: CurrencyPair instance
             :return:
             """
-            result = client.order_book(pair.to_indirect(separator=''))
+            pair_code = pair.to_direct(separator='')
+            result = client.order_book(pair_code)
             result_bid = result['bids'][0]
             result_ask = result['asks'][0]
             bid_price = round(Decimal(result_bid['price']), 10)
