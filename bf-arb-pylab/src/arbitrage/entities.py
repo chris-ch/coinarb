@@ -86,7 +86,7 @@ class ForexQuote(object):
     """
 
     def __init__(self, _timestamp: datetime=None, bid: PriceVolume=None, ask: PriceVolume=None,
-                 source: str=None):
+                 source: str=None, pair: str=''):
         if not _timestamp:
             self._timestamp = datetime.now()
 
@@ -96,6 +96,7 @@ class ForexQuote(object):
         self._bid = bid
         self._ask = ask
         self._source = source
+        self._pair = pair
 
     @property
     def timestamp(self) -> datetime:
@@ -113,6 +114,10 @@ class ForexQuote(object):
     def source(self) -> str:
         return self._source
 
+    @property
+    def pair(self) -> str:
+        return self._pair
+
     def is_complete(self) -> bool:
         return self.bid is not None and self.ask is not None
 
@@ -120,7 +125,7 @@ class ForexQuote(object):
         quote_data = {'timestamp': self.timestamp,
                       'bid': {'price': self.bid.price, 'amount': self.bid.volume},
                       'ask': {'price': self.ask.price, 'amount': self.ask.volume},
-                      'source': self.source}
+                      'source': self.source, 'pair': self.pair}
         return json.dumps(quote_data, cls=QuoteEncoder)
 
     def __repr__(self):
@@ -527,14 +532,19 @@ class OrderBook(object):
     Models an order book.
     """
 
-    def __init__(self, source):
+    def __init__(self, pair, source):
         self._quotes_bid_by_price = dict()
         self._quotes_ask_by_price = dict()
+        self._pair = pair
         self._source = source
 
     @property
     def source(self):
         return self._source
+
+    @property
+    def pair(self):
+        return self._pair
 
     @property
     def quotes_bid(self) -> List[Dict[str, Any]]:
@@ -637,7 +647,7 @@ class OrderBook(object):
         timestamp = max(best_bid['timestamp'], best_ask['timestamp'])
         bid_side = PriceVolume(best_bid['price'], best_bid['amount'])
         ask_side = PriceVolume(best_ask['price'], best_ask['amount'])
-        return ForexQuote(timestamp, bid_side, ask_side, source=self.source)
+        return ForexQuote(timestamp, bid_side, ask_side, source=self.source, pair=self.pair)
 
     def to_json(self):
         return json.dumps({'bid': self.quotes_bid, 'ask': self.quotes_ask}, cls=QuoteEncoder)

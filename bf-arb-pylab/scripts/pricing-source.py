@@ -23,7 +23,7 @@ async def consumer_handler(pairs, notify_update_func: Callable[[str, OrderBook],
     :return:
     """
     channel_pair_mapping = dict()
-    orderbooks = defaultdict(lambda: OrderBook('bitfinex'))
+    orderbooks = dict()
     async with websockets.connect(WSS_BITFINEX_2) as websocket:
         for pair in pairs:
             subscription = json.dumps({
@@ -60,6 +60,9 @@ async def consumer_handler(pairs, notify_update_func: Callable[[str, OrderBook],
 
                     channel_id = response[0]
                     pair = channel_pair_mapping[channel_id]
+                    if pair not in orderbooks:
+                        orderbooks[pair] = OrderBook(pair=pair, source='bitfinex')
+
                     orderbooks[pair].load_snapshot(response)
                     logging.info('> loaded snapshot order book {}'.format(orderbooks[pair]))
                     notify_update_func(pair, orderbooks[pair])
