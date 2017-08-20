@@ -11,6 +11,17 @@ import json
 import pandas
 
 
+class QuoteEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, Decimal):
+            return str(o)
+
+        elif isinstance(o, datetime):
+            return o.isoformat()
+
+        return super(QuoteEncoder, self).default(0)
+
+
 class PriceVolume(object):
     price: Decimal
     volume: Decimal
@@ -74,7 +85,8 @@ class ForexQuote(object):
     Models a forex quote.
     """
 
-    def __init__(self, _timestamp: datetime=None, bid: PriceVolume=None, ask: PriceVolume=None, source: str=None):
+    def __init__(self, _timestamp: datetime=None, bid: PriceVolume=None, ask: PriceVolume=None,
+                 source: str=None):
         if not _timestamp:
             self._timestamp = datetime.now()
 
@@ -103,6 +115,13 @@ class ForexQuote(object):
 
     def is_complete(self) -> bool:
         return self.bid is not None and self.ask is not None
+
+    def to_json(self):
+        quote_data = {'timestamp': self.timestamp,
+                      'bid': {'price': self.bid.price, 'amount': self.bid.volume},
+                      'ask': {'price': self.ask.price, 'amount': self.ask.volume},
+                      'source': self.source}
+        return json.dumps(quote_data, cls=QuoteEncoder)
 
     def __repr__(self):
         return '[{}:{}/{}]'.format(self.timestamp, self.bid, self.ask)
@@ -388,7 +407,7 @@ class ArbitrageStrategy(object):
 
         return is_valid
 
-    def find_opportunity(self, illimited_volume: bool, skip_capped: bool=True):
+    def find_opportunity(self, illimited_volume: bool, skip_capped: bool = True):
         """
 
         :param illimited_volume: emulates infinite liquidity
@@ -507,9 +526,15 @@ class OrderBook(object):
     """
     Models an order book.
     """
-    def __init__(self):
+
+    def __init__(self, source):
         self._quotes_bid_by_price = dict()
         self._quotes_ask_by_price = dict()
+        self._source = source
+
+    @property
+    def source(self):
+        return self._source
 
     @property
     def quotes_bid(self) -> List[Dict[str, Any]]:
@@ -535,7 +560,8 @@ class OrderBook(object):
                 self._quotes_bid_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': price, 'amount': amount}
 
             else:
-                self._quotes_ask_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': price * -1, 'amount': amount}
+                self._quotes_ask_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': price * -1,
+                                                             'amount': amount}
 
     def remove_quote(self, price, quotes_by_price):
         """
@@ -551,12 +577,29 @@ class OrderBook(object):
         return False
 
     def remove_bid(self, price):
+        """
+
+        :param price:
+        :return:
+        """
         return self.remove_quote(price, self._quotes_bid_by_price)
 
     def remove_ask(self, price):
+        """
+
+        :param price:
+        :return:
+        """
         return self.remove_quote(price, self._quotes_ask_by_price)
 
     def update_quote(self, quotes_by_price, price, amount):
+        """
+
+        :param quotes_by_price:
+        :param price:
+        :param amount:
+        :return:
+        """
         timestamp = datetime.utcnow()
         if price in self._quotes_bid_by_price:
             quotes_by_price[price]['timestamp'] = timestamp
@@ -568,23 +611,35 @@ class OrderBook(object):
         return True
 
     def update_bid(self, price, amount):
+        """
+
+        :param price:
+        :param amount:
+        :return:
+        """
         return self.update_quote(self._quotes_bid_by_price, price, amount)
 
     def update_ask(self, price, amount):
+        """
+
+        :param price:
+        :param amount:
+        :return:
+        """
         return self.update_quote(self._quotes_bid_by_price, price, amount)
 
+    def level_one(self):
+        """
+        :return:
+        """
+        best_bid = self.quotes_bid[0]
+        best_ask = self.quotes_ask[0]
+        timestamp = max(best_bid['timestamp'], best_ask['timestamp'])
+        bid_side = PriceVolume(best_bid['price'], best_bid['amount'])
+        ask_side = PriceVolume(best_ask['price'], best_ask['amount'])
+        return ForexQuote(timestamp, bid_side, ask_side, source=self.source)
+
     def to_json(self):
-        class QuoteEncoder(json.JSONEncoder):
-
-            def default(self, o):
-                if isinstance(o, Decimal):
-                    return str(o)
-
-                elif isinstance(o, datetime):
-                    return o.isoformat()
-
-                return super(QuoteEncoder, self).default(0)
-
         return json.dumps({'bid': self.quotes_bid, 'ask': self.quotes_ask}, cls=QuoteEncoder)
 
     def __repr__(self):

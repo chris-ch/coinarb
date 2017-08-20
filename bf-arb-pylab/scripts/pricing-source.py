@@ -1,15 +1,12 @@
 import argparse
 import logging
 
-from multiprocessing import Process
-import time
-from datetime  import datetime
 from decimal import Decimal
 
 from collections import defaultdict
-from typing import Dict, Callable, Any
+from typing import Callable, Any
 
-from arbitrage.entities import ForexQuote, CurrencyPair, PriceVolume, OrderBook
+from arbitrage.entities import OrderBook
 
 import json
 import asyncio
@@ -26,7 +23,7 @@ async def consumer_handler(pairs, notify_update_func: Callable[[str, OrderBook],
     :return:
     """
     channel_pair_mapping = dict()
-    orderbooks = defaultdict(OrderBook)
+    orderbooks = defaultdict(lambda: OrderBook('bitfinex'))
     async with websockets.connect(WSS_BITFINEX_2) as websocket:
         for pair in pairs:
             subscription = json.dumps({
@@ -93,18 +90,14 @@ def main(args):
     pairs = [''.join(pair.upper().split('/')) for pair in args.bitfinex.split(',')]
 
     def notify_update(pair, order_book):
-        logging.info('{}: updated book {}'.format(pair, order_book))
+        logging.info('{}: updated book {}'.format(pair, order_book.level_one()))
+        print(order_book.level_one().to_json())
 
     asyncio.get_event_loop().run_until_complete(consumer_handler(pairs, notify_update))
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')
-    logging.getLogger('requests').setLevel(logging.WARNING)
-    file_handler = logging.FileHandler('pricing-source.log', mode='w')
-    formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
-    file_handler.setFormatter(formatter)
-    logging.getLogger().addHandler(file_handler)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s', filename='pricing-source.log')
     parser = argparse.ArgumentParser(description='Sending quotes for subscribed prices.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter
                                      )
