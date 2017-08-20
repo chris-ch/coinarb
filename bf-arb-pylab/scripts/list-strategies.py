@@ -22,7 +22,7 @@ def main(args):
     pairs = parse_symbols_bitfinex(pair_codes)
     strategies = create_strategies(pairs)
     for strategy in strategies:
-        print(strategy)
+        print('[{}]'.format(','.join(['"{}/{}"'.format(pair.base, pair.quote) for pair in strategy.pairs])))
 
 
 if __name__ == '__main__':

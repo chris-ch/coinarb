@@ -1,11 +1,12 @@
 import logging
 from functools import total_ordering
-from typing import Tuple, NamedTuple, Dict, Callable, Set
+from typing import Tuple, NamedTuple, Dict, Callable, Set, Iterable, Any, Collection, List
 
 import numpy
 import itertools
 from decimal import Decimal
 from datetime import datetime
+import json
 
 import pandas
 
@@ -73,7 +74,7 @@ class ForexQuote(object):
     Models a forex quote.
     """
 
-    def __init__(self, _timestamp: datetime = None, bid: PriceVolume = None, ask: PriceVolume = None):
+    def __init__(self, _timestamp: datetime=None, bid: PriceVolume=None, ask: PriceVolume=None, source: str=None):
         if not _timestamp:
             self._timestamp = datetime.now()
 
@@ -82,6 +83,7 @@ class ForexQuote(object):
 
         self._bid = bid
         self._ask = ask
+        self._source = source
 
     @property
     def timestamp(self) -> datetime:
@@ -94,6 +96,10 @@ class ForexQuote(object):
     @property
     def ask(self) -> PriceVolume:
         return self._ask
+
+    @property
+    def source(self) -> str:
+        return self._source
 
     def is_complete(self) -> bool:
         return self.bid is not None and self.ask is not None
@@ -178,7 +184,7 @@ class CurrencyPair(object):
         return balances, trade
 
     def buy_currency(self, currency: str, volume: Decimal, quote: ForexQuote, illimited_volume: bool = False) -> Tuple[
-        Dict[str, CurrencyBalance], CurrencyTrade]:
+        Dict[str, Decimal], CurrencyTrade]:
         """
 
         :param currency: currency to buy
@@ -201,7 +207,7 @@ class CurrencyPair(object):
         return balances, performed_trade
 
     def sell_currency(self, currency: str, volume: Decimal, quote: ForexQuote, illimited_volume: bool = False) -> Tuple[
-        Dict[str, CurrencyBalance], CurrencyTrade]:
+        Dict[str, Decimal], CurrencyTrade]:
         """
 
         :param currency:
@@ -232,12 +238,12 @@ class CurrencyPair(object):
 
         if amount >= 0:
             balances, trade = self.sell_currency(currency, amount, quote, illimited_volume=True)
-            amount = balances[destination_currency].amount
+            amount = balances[destination_currency]
             return abs(amount)
 
         else:
             balances, trade = self.buy_currency(currency, abs(amount), quote, illimited_volume=True)
-            amount = balances[destination_currency].amount
+            amount = balances[destination_currency]
             return abs(amount) * -1
 
     @property
@@ -487,3 +493,49 @@ class CurrencyConverter(object):
     def buy(self, currency: str, amount: Decimal) -> Decimal:
         assert amount >= 0
         return self.exchange(currency, -amount)
+
+
+def order_entries(quotes: Dict[Decimal, Tuple[datetime, Decimal, int]], reverse=False) -> Iterable[Dict[str, Any]]:
+    ordered_quotes = list()
+    for price in sorted(quotes, reverse=reverse):
+        timestamp, amount, count = quotes[price]
+        ordered_quotes.append({'timestamp': timestamp, 'price':price, 'amount': amount})
+
+    return ordered_quotes
+
+
+class OrderBook(object):
+    """
+    Models an order book.
+    """
+    def __init__(self):
+        self._quotes_bid = list()
+        self._quotes_ask = list()
+
+    @property
+    def quotes_bid(self) -> List[Dict[str, Any]]:
+        return self._quotes_bid
+
+    @property
+    def quotes_ask(self) -> List[Dict[str, Any]]:
+        return self._quotes_ask
+
+    def load_snapshot(self, snapshot):
+        channel_id, book_data = snapshot
+        quote_bids = dict()
+        quote_asks = dict()
+        for price, count, amount in book_data:
+            if Decimal(amount) > 0:
+                quote_bids[Decimal(price)] = (datetime.now(), Decimal(amount), int(count))
+
+            else:
+                quote_asks[Decimal(price)] = (datetime.now(), Decimal(amount) * -1, int(count))
+
+        self._quotes_bid = order_entries(quote_bids, reverse=True)
+        self._quotes_ask = order_entries(quote_asks, reverse=False)
+
+    def to_json(self):
+        return json.dumps({'bid': self.quotes_bid, 'ask': self.quotes_ask})
+
+    def __repr__(self):
+        return self.to_json()

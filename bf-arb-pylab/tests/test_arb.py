@@ -1,3 +1,4 @@
+import json
 import unittest
 import logging
 
@@ -7,11 +8,10 @@ from datetime import datetime
 
 import itertools
 
-import math
 import requests_cache
 
 from arbitrage import parse_pair_from_indirect, create_strategies, parse_currency_pair, parse_strategy
-from arbitrage.entities import ForexQuote, ArbitrageStrategy, CurrencyPair, CurrencyConverter, PriceVolume
+from arbitrage.entities import ForexQuote, ArbitrageStrategy, CurrencyPair, CurrencyConverter, PriceVolume, OrderBook
 
 
 class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
@@ -78,7 +78,7 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
             if set(pair2.split('/')) == set(pair3.split('/')):
                 continue
 
-            input = '[<{}>,<{}>,<{}>]'.format(pair1, pair2, pair3)
+            input = '<{}>,<{}>,<{}>'.format(pair1, pair2, pair3)
             strategy = parse_strategy(input)
             self.assertEqual(strategy.indirect_pairs[0].quote, strategy.indirect_pairs[1].base)
             self.assertNotEqual(strategy.direct_pair.base, strategy.indirect_pairs[0].quote)
@@ -142,7 +142,7 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
 
             return ForexQuote(datetime(2017, 1, 1), bid, ask)
 
-        input = '[<eur/chf>,<chf/usd>,<usd/eur>]'
+        input = '<eur/chf>,<chf/usd>,<usd/eur>'
         strategy = parse_strategy(input)
         self.assertEqual(strategy.direct_pair, CurrencyPair('usd', 'eur'))
         self.assertEqual(strategy.indirect_pairs[0], CurrencyPair('eur', 'chf'))
@@ -181,6 +181,30 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         self.assertAlmostEqual(total['usd'], -0.0044, places=4)
         self.assertAlmostEqual(total['chf'], 0, places=4)
         self.assertAlmostEqual(total['eur'], 0, places=4)
+
+    def test_orderbook(self):
+        snapshot = ['75', [['0.0003346', '4', '37.62485165'], ['0.00033459', '1', '8730.72318672'], ['0.000333', '1', '350'],
+                         ['0.00033198', '2', '0.2'], ['0.00033197', '1', '0.1'], ['0.00033196', '1', '0.1'], ['0.00033176', '1', '0.1'],
+                         ['0.00033173', '1', '0.1'], ['0.0003312', '1', '500'], ['0.00033101', '1', '86.744'], ['0.000331', '1', '6451.4199'],
+                         ['0.00033023', '1', '740.87686'], ['0.00033011', '1', '741.14618'], ['0.00033', '2', '139.46531923'],
+                         ['0.00032511', '1', '2887.53883609'], ['0.0003251', '2', '4778.30604615'], ['0.00032503', '1', '606.92814785'],
+                         ['0.000325', '3', '94'], ['0.00032371', '1', '84.36364058'], ['0.0003237', '1', '12.3571205'],
+                         ['0.00032369', '1', '17.4'], ['0.000323', '1', '1530'], ['0.000322', '1', '1'], ['0.000321', '2', '1050'],
+                         ['0.00032021', '1', '6.05'], ['0.00033529', '1', '-98.41876716'], ['0.00033537', '1', '-153.46272053'],
+                         ['0.00033548', '1', '-153.46272053'], ['0.0003356', '1', '-249.9'], ['0.00033588', '8', '-58.07091549'],
+                         ['0.00033602', '1', '-2846.53727947'], ['0.00033664', '1', '-0.1'], ['0.00033665', '1', '-0.1'],
+                         ['0.00033666', '1', '-0.1'], ['0.00033667', '1', '-0.1'], ['0.0003367', '5', '-7776.02600001'],
+                         ['0.00033673', '1', '-0.1'], ['0.00033674', '1', '-0.1'], ['0.00033679', '1', '-930.2741439'],
+                         ['0.0003368', '1', '-5000'], ['0.00033682', '2', '-0.2'], ['0.00033683', '2', '-0.2'],
+                         ['0.00033887', '1', '-12.46962851'], ['0.0003396', '1', '-20'], ['0.00033969', '1', '-729.26098'],
+                         ['0.0003397', '1', '-4568.4'], ['0.0003408', '1', '-5721.8059'], ['0.0003409', '1', '-50000'],
+                         ['0.00034095', '1', '-0.15968'], ['0.00034149', '1', '-5.09291225']]]
+        orderbook = OrderBook()
+        orderbook.load_snapshot(snapshot)
+        self.assertEqual(orderbook.quotes_bid[0]['price'], Decimal('0.0003346'))
+        self.assertEqual(orderbook.quotes_bid[-1]['price'], Decimal('0.00032021'))
+        self.assertEqual(orderbook.quotes_ask[0]['price'], Decimal('0.00033529'))
+        self.assertEqual(orderbook.quotes_ask[-1]['price'], Decimal('0.00034149'))
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')

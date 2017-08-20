@@ -15,14 +15,6 @@ from arbitrage import scan_arbitrage_opportunities, parse_pair_from_indirect, pa
 from arbitrage.entities import ForexQuote, CurrencyPair, PriceVolume
 
 
-def parse_symbols_bitfinex(pairs):
-    symbols = set()
-    for pair_code in pairs:
-        symbols.add(parse_pair_from_indirect(pair_code))
-
-    return symbols
-
-
 def wss():
     wss = BtfxWss()
     wss.start()
@@ -79,7 +71,7 @@ def main(args):
             bid_volume = round(Decimal(result_bid['amount']), 10)
             ask_volume = round(Decimal(result_ask['amount']), 10)
             timestamp = result_bid['timestamp']
-            return ForexQuote(timestamp, PriceVolume(bid_price, bid_volume), PriceVolume(ask_price, ask_volume))
+            return ForexQuote(timestamp, PriceVolume(bid_price, bid_volume), PriceVolume(ask_price, ask_volume), source='bitfinex')
 
         return wrapped
 
@@ -99,7 +91,7 @@ if __name__ == '__main__':
                                      )
     parser.add_argument('--config', type=str, help='configuration file', default='config.json')
     parser.add_argument('--secrets', type=str, help='configuration with secret connection data', default='secrets.json')
-    parser.add_argument('--strategy', type=str, help='strategy as a formatted string ([<btc/etc>,<usd/btc>,<usd/etc>])')
+    parser.add_argument('--strategy', type=str, help='strategy as a formatted string (for example: eth/btc,btc/usd,eth/usd')
 
     args = parser.parse_args()
     # DEBUGGING

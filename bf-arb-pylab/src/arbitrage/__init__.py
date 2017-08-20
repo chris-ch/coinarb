@@ -1,8 +1,9 @@
 import itertools
+import json
 import logging
 import re
 from time import sleep
-from typing import Callable, Any
+from typing import Callable, Any, Generator, Iterable
 
 from arbitrage.entities import ArbitrageStrategy, CurrencyPair, CurrencyConverter, ForexQuote
 
@@ -33,12 +34,10 @@ def parse_currency_pair(pair_string, separator='/', indirect_mode=False):
     :param indirect_mode: quote currency comes first
     :return:
     """
-    part1, part2 = pair_string.split(separator)
+    pattern = re.match('^<?([a-zA-Z0-9]+){}([a-zA-Z0-9]+)>?$'.format(separator), pair_string.strip())
+    pair1, pair2 = pattern.group(1), pattern.group(2)
     if indirect_mode:
-        pair1, pair2 = part2[:-1], part1[1:]
-
-    else:
-        pair1, pair2 = part1[1:], part2[:-1]
+        pair1, pair2 = pair2, pair1
 
     return CurrencyPair(pair1, pair2)
 
@@ -49,17 +48,17 @@ def parse_strategy(strategy_string, indirect_mode=False):
     :param indirect_mode: quote currency comes first
     :return:
     """
-    pattern = re.match(r'^\[(.*),(.*),(.*)\]$', strategy_string.strip())
+    pattern = re.match(r'^\[?(.*),(.*),([^]]+)\]?$', strategy_string.strip())
     pair1_code = pattern.group(1)
     pair2_code = pattern.group(2)
     pair3_code = pattern.group(3)
-    pair1 = parse_currency_pair(pair1_code, indirect_mode=indirect_mode)
-    pair2 = parse_currency_pair(pair2_code, indirect_mode=indirect_mode)
-    pair3 = parse_currency_pair(pair3_code, indirect_mode=indirect_mode)
+    pair1 = parse_currency_pair(pair1_code.strip(), indirect_mode=indirect_mode)
+    pair2 = parse_currency_pair(pair2_code.strip(), indirect_mode=indirect_mode)
+    pair3 = parse_currency_pair(pair3_code.strip(), indirect_mode=indirect_mode)
     return ArbitrageStrategy(pair1, pair2, pair3)
 
 
-def create_strategies(pairs):
+def create_strategies(pairs: Iterable[CurrencyPair]) -> Generator[ArbitrageStrategy, None, None]:
     """
 
     :param assets: iterable currency codes
