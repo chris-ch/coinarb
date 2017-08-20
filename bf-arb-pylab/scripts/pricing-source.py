@@ -7,8 +7,9 @@ from datetime  import datetime
 from decimal import Decimal
 
 from collections import defaultdict
+from typing import Dict, Callable, Any
 
-from arbitrage.entities import ForexQuote, CurrencyPair, PriceVolume
+from arbitrage.entities import ForexQuote, CurrencyPair, PriceVolume, OrderBook
 
 import json
 import asyncio
@@ -17,8 +18,15 @@ import websockets
 WSS_BITFINEX_2 = 'wss://api2.bitfinex.com:3000/ws'
 
 
-async def consumer_handler(pairs):
+async def consumer_handler(pairs, notify_update_func: Callable[[str, OrderBook], Any]):
+    """
+
+    :param pairs:
+    :param notify_update_func:
+    :return:
+    """
     channel_pair_mapping = dict()
+    orderbooks = defaultdict(OrderBook)
     async with websockets.connect(WSS_BITFINEX_2) as websocket:
         for pair in pairs:
             subscription = json.dumps({
@@ -31,7 +39,7 @@ async def consumer_handler(pairs):
             await websocket.send(subscription)
 
         while True:
-            response = json.loads(await websocket.recv())
+            response = json.loads(await websocket.recv(), parse_float=Decimal)
             if hasattr(response, 'keys'):
                 if 'version' in response.keys():
                     logging.info('event: {} {}'.format(response['event'], response['version']))
@@ -53,18 +61,41 @@ async def consumer_handler(pairs):
                     if response[1] == 'hb':
                         continue
 
-                    # Order Book snapshot
-                    print("> {}".format(response))
+                    channel_id = response[0]
+                    pair = channel_pair_mapping[channel_id]
+                    orderbooks[pair].load_snapshot(response)
+                    logging.info('> loaded snapshot order book {}'.format(orderbooks[pair]))
+                    notify_update_func(pair, orderbooks[pair])
 
                 else:
                     # Order Book update
                     channel_id, price, count, amount = response
-                    print("> {}, {}, {}".format(channel_pair_mapping[channel_id], price, count, amount))
+                    pair = channel_pair_mapping[channel_id]
+                    if count > 0:
+                        if amount > 0:
+                            updated = orderbooks[pair].update_bid(price, amount, count)
+
+                        else:
+                            updated = orderbooks[pair].update_ask(price, amount, count)
+
+                    else:
+                        if amount == 1:
+                            updated = orderbooks[pair].remove_bid(price)
+
+                        else:
+                            updated = orderbooks[pair].remove_ask(price)
+
+                    if updated:
+                        notify_update_func(pair, orderbooks[pair])
 
 
 def main(args):
     pairs = [''.join(pair.upper().split('/')) for pair in args.bitfinex.split(',')]
-    asyncio.get_event_loop().run_until_complete(consumer_handler(pairs))
+
+    def notify_update(pair, order_book):
+        logging.info('{}: updated book {}'.format(pair, order_book))
+
+    asyncio.get_event_loop().run_until_complete(consumer_handler(pairs, notify_update))
 
 
 if __name__ == '__main__':

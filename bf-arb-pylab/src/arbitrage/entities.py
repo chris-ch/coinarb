@@ -526,16 +526,63 @@ class OrderBook(object):
         quote_asks = dict()
         for price, count, amount in book_data:
             if Decimal(amount) > 0:
-                quote_bids[Decimal(price)] = (datetime.now(), Decimal(amount), int(count))
+                quote_bids[Decimal(price)] = (datetime.utcnow(), Decimal(amount), int(count))
 
             else:
-                quote_asks[Decimal(price)] = (datetime.now(), Decimal(amount) * -1, int(count))
+                quote_asks[Decimal(price)] = (datetime.utcnow(), Decimal(amount) * -1, int(count))
 
         self._quotes_bid = order_entries(quote_bids, reverse=True)
         self._quotes_ask = order_entries(quote_asks, reverse=False)
 
+    def remove_quote(self, price, quotes):
+        """
+
+        :param price:
+        :param quotes:
+        :return:
+        """
+        quote_index = -1
+        for count, quote in enumerate(quotes):
+            if quote['price'] == price:
+                quote_index = count
+                break
+
+        if quote_index == -1:
+            # price not necessarily in order book
+            #logging.warning('price {} not in quotes: {}'.format(price, [quote['price'] for quote in quotes]))
+            return False
+
+        else:
+            logging.info('removing price: {}'.format(price))
+
+        quotes.pop(quote_index)
+        return True
+
+    def remove_bid(self, price):
+        return self.remove_quote(price, self._quotes_bid)
+
+    def remove_ask(self, price):
+        return self.remove_quote(price, self._quotes_ask)
+
+    def update_bid(self, price, amount, count):
+        return False
+
+    def update_ask(self, price, amount, count):
+        return False
+
     def to_json(self):
-        return json.dumps({'bid': self.quotes_bid, 'ask': self.quotes_ask})
+        class QuoteEncoder(json.JSONEncoder):
+
+            def default(self, o):
+                if isinstance(o, Decimal):
+                    return str(o)
+
+                elif isinstance(o, datetime):
+                    return o.isoformat()
+
+                return super(QuoteEncoder, self).default(0)
+
+        return json.dumps({'bid': self.quotes_bid, 'ask': self.quotes_ask}, cls=QuoteEncoder)
 
     def __repr__(self):
         return self.to_json()

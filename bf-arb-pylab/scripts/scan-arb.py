@@ -1,45 +1,14 @@
 import argparse
 import logging
 
-import os
-
 import sys
 import tenacity
-import time
-from btfxwss import BtfxWss
 import bitfinex
 import requests_cache
 from decimal import Decimal
 
-from arbitrage import scan_arbitrage_opportunities, parse_pair_from_indirect, parse_strategy
+from arbitrage import scan_arbitrage_opportunities, parse_strategy
 from arbitrage.entities import ForexQuote, CurrencyPair, PriceVolume
-
-
-def wss():
-    wss = BtfxWss()
-    wss.start()
-    time.sleep(1)  # give the client some prep time to set itself up.
-
-    # Subscribe to some channels
-    wss.subscribe_to_ticker('BTCUSD')
-    wss.subscribe_to_order_book('BTCUSD')
-
-    # Do something else
-    t = time.time()
-    while time.time() - t < 10:
-        pass
-
-    # Accessing data stored in BtfxWss:
-    ticker_q = wss.tickers('BTCUSD')  # returns a Queue object for the pair.
-    while not ticker_q.empty():
-        print(ticker_q.get())
-
-    # Unsubscribing from channels:
-    wss.unsubscribe_from_ticker('BTCUSD')
-    wss.unsubscribe_from_order_book('BTCUSD')
-
-    # Shutting down the client:
-    wss.stop()
 
 
 def main(args):
