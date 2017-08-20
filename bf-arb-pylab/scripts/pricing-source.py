@@ -73,10 +73,10 @@ async def consumer_handler(pairs, notify_update_func: Callable[[str, OrderBook],
                     pair = channel_pair_mapping[channel_id]
                     if count > 0:
                         if amount > 0:
-                            updated = orderbooks[pair].update_bid(price, amount, count)
+                            updated = orderbooks[pair].update_bid(price, amount)
 
                         else:
-                            updated = orderbooks[pair].update_ask(price, amount, count)
+                            updated = orderbooks[pair].update_ask(price, amount)
 
                     else:
                         if amount == 1:

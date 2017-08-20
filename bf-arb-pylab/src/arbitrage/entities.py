@@ -495,11 +495,10 @@ class CurrencyConverter(object):
         return self.exchange(currency, -amount)
 
 
-def order_entries(quotes: Dict[Decimal, Tuple[datetime, Decimal, int]], reverse=False) -> Iterable[Dict[str, Any]]:
+def order_entries(quotes: Dict[Decimal, Tuple[datetime, Decimal, int]], reverse=False) -> List[Dict[str, Any]]:
     ordered_quotes = list()
     for price in sorted(quotes, reverse=reverse):
-        timestamp, amount, count = quotes[price]
-        ordered_quotes.append({'timestamp': timestamp, 'price':price, 'amount': amount})
+        ordered_quotes.append(quotes[price])
 
     return ordered_quotes
 
@@ -509,66 +508,70 @@ class OrderBook(object):
     Models an order book.
     """
     def __init__(self):
-        self._quotes_bid = list()
-        self._quotes_ask = list()
+        self._quotes_bid_by_price = dict()
+        self._quotes_ask_by_price = dict()
 
     @property
     def quotes_bid(self) -> List[Dict[str, Any]]:
-        return self._quotes_bid
+        quotes_bid = order_entries(self._quotes_bid_by_price, reverse=True)
+        return quotes_bid
 
     @property
     def quotes_ask(self) -> List[Dict[str, Any]]:
-        return self._quotes_ask
+        quotes_ask = order_entries(self._quotes_ask_by_price, reverse=False)
+        return quotes_ask
 
     def load_snapshot(self, snapshot):
+        """
+
+        :param snapshot:
+        :return:
+        """
         channel_id, book_data = snapshot
-        quote_bids = dict()
-        quote_asks = dict()
         for price, count, amount in book_data:
+            timestamp = datetime.utcnow()
+            amount = Decimal(amount)
             if Decimal(amount) > 0:
-                quote_bids[Decimal(price)] = (datetime.utcnow(), Decimal(amount), int(count))
+                self._quotes_bid_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': price, 'amount': amount}
 
             else:
-                quote_asks[Decimal(price)] = (datetime.utcnow(), Decimal(amount) * -1, int(count))
+                self._quotes_ask_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': price * -1, 'amount': amount}
 
-        self._quotes_bid = order_entries(quote_bids, reverse=True)
-        self._quotes_ask = order_entries(quote_asks, reverse=False)
-
-    def remove_quote(self, price, quotes):
+    def remove_quote(self, price, quotes_by_price):
         """
 
         :param price:
-        :param quotes:
+        :param quotes_by_price:
         :return:
         """
-        quote_index = -1
-        for count, quote in enumerate(quotes):
-            if quote['price'] == price:
-                quote_index = count
-                break
+        if price in quotes_by_price:
+            quotes_by_price.pop(price)
+            return True
 
-        if quote_index == -1:
-            # price not necessarily in order book
-            #logging.warning('price {} not in quotes: {}'.format(price, [quote['price'] for quote in quotes]))
-            return False
-
-        else:
-            logging.info('removing price: {}'.format(price))
-
-        quotes.pop(quote_index)
-        return True
+        return False
 
     def remove_bid(self, price):
-        return self.remove_quote(price, self._quotes_bid)
+        return self.remove_quote(price, self._quotes_bid_by_price)
 
     def remove_ask(self, price):
-        return self.remove_quote(price, self._quotes_ask)
+        return self.remove_quote(price, self._quotes_ask_by_price)
 
-    def update_bid(self, price, amount, count):
-        return False
+    def update_quote(self, quotes_by_price, price, amount):
+        timestamp = datetime.utcnow()
+        if price in self._quotes_bid_by_price:
+            quotes_by_price[price]['timestamp'] = timestamp
+            quotes_by_price[price]['amount'] = amount
 
-    def update_ask(self, price, amount, count):
-        return False
+        else:
+            quotes_by_price[price] = {'timestamp': timestamp, 'price': price, 'amount': amount}
+
+        return True
+
+    def update_bid(self, price, amount):
+        return self.update_quote(self._quotes_bid_by_price, price, amount)
+
+    def update_ask(self, price, amount):
+        return self.update_quote(self._quotes_bid_by_price, price, amount)
 
     def to_json(self):
         class QuoteEncoder(json.JSONEncoder):
