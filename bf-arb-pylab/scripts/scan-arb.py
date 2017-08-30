@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 
 import sys
@@ -7,7 +8,7 @@ import bitfinex
 import requests_cache
 from decimal import Decimal
 
-from arbitrage import scan_arbitrage_opportunities, parse_strategy
+from arbitrage import scan_arbitrage_opportunities, parse_strategy, parse_quote
 from arbitrage.entities import ForexQuote, CurrencyPair, PriceVolume
 
 
@@ -15,37 +16,42 @@ def main(args):
     if args.strategy:
         strategy = parse_strategy(args.strategy, indirect_mode=True)
 
-    else:
-        logging.info('loading strategy from standard input')
-        strategy = sys.stdin.readline()
-
-    def order_book_l1(client: bitfinex.Client):
-        """
-        Creates a function returning a quote for a given currency pair.
-        :param client:
-        :return:
-        """
-        def wrapped(pair: CurrencyPair):
+        def order_book_l1(client: bitfinex.Client):
             """
-
-            :param pair: CurrencyPair instance
+            Creates a function returning a quote for a given currency pair.
+            :param client:
             :return:
             """
-            pair_code = pair.to_direct(separator='')
-            result = client.order_book(pair_code)
-            result_bid = result['bids'][0]
-            result_ask = result['asks'][0]
-            bid_price = round(Decimal(result_bid['price']), 10)
-            ask_price = round(Decimal(result_ask['price']), 10)
-            bid_volume = round(Decimal(result_bid['amount']), 10)
-            ask_volume = round(Decimal(result_ask['amount']), 10)
-            timestamp = result_bid['timestamp']
-            return ForexQuote(timestamp, PriceVolume(bid_price, bid_volume), PriceVolume(ask_price, ask_volume), source='bitfinex')
+            def wrapped(pair: CurrencyPair):
+                """
 
-        return wrapped
+                :param pair: CurrencyPair instance
+                :return:
+                """
+                pair_code = pair.to_direct(separator='')
+                result = client.order_book(pair_code)
+                result_bid = result['bids'][0]
+                result_ask = result['asks'][0]
+                bid_price = round(Decimal(result_bid['price']), 10)
+                ask_price = round(Decimal(result_ask['price']), 10)
+                bid_volume = round(Decimal(result_bid['amount']), 10)
+                ask_volume = round(Decimal(result_ask['amount']), 10)
+                timestamp = result_bid['timestamp']
+                return ForexQuote(timestamp, PriceVolume(bid_price, bid_volume), PriceVolume(ask_price, ask_volume), source='bitfinex')
 
-    bitfinex_client = bitfinex.Client()
-    scan_arbitrage_opportunities(strategy, order_book_l1, bitfinex_client, illimited_volume=True)
+            return wrapped
+
+        if args.replay:
+            prices_input = open(args.replay, 'r')
+
+        else:
+            logging.info('loading prices from standard input')
+            prices_input = sys.stdin
+
+        for line in prices_input:
+            order_book_update = parse_quote(line)
+            print(order_book_update)
+            #scan_arbitrage_opportunities(strategy, order_book_l1, illimited_volume=True)
 
 
 if __name__ == '__main__':
@@ -61,6 +67,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, help='configuration file', default='config.json')
     parser.add_argument('--secrets', type=str, help='configuration with secret connection data', default='secrets.json')
     parser.add_argument('--strategy', type=str, help='strategy as a formatted string (for example: eth/btc,btc/usd,eth/usd')
+    parser.add_argument('--replay', type=str, help='use recorded prices')
 
     args = parser.parse_args()
     # DEBUGGING

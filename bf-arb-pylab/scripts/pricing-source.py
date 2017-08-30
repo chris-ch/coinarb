@@ -6,7 +6,7 @@ from decimal import Decimal
 from collections import defaultdict
 from typing import Callable, Any
 
-from arbitrage.entities import OrderBook
+from arbitrage.entities import OrderBook, QuoteEncoder
 
 import json
 import asyncio
@@ -93,8 +93,11 @@ def main(args):
     pairs = [''.join(pair.upper().split('/')) for pair in args.bitfinex.split(',')]
 
     def notify_update(pair, order_book):
-        logging.info('{}: updated book {}'.format(pair, order_book.level_one()))
-        print(order_book.level_one().to_json())
+        level_one = order_book.level_one()
+        logging.info('{}: updated book {}'.format(pair, level_one))
+        level_one_dict = level_one.to_dict()
+        level_one_dict['pair'] = pair
+        print(json.dumps(level_one_dict, cls=QuoteEncoder))
 
     asyncio.get_event_loop().run_until_complete(consumer_handler(pairs, notify_update))
 

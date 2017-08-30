@@ -1,6 +1,6 @@
 import logging
 from functools import total_ordering
-from typing import Tuple, NamedTuple, Dict, Callable, Set, Iterable, Any, Collection, List
+from typing import Tuple, NamedTuple, Dict, Callable, Set, Any, List
 
 import numpy
 import itertools
@@ -85,18 +85,17 @@ class ForexQuote(object):
     Models a forex quote.
     """
 
-    def __init__(self, _timestamp: datetime=None, bid: PriceVolume=None, ask: PriceVolume=None,
-                 source: str=None, pair: str=''):
-        if not _timestamp:
+    def __init__(self, timestamp: datetime=None, bid: PriceVolume=None, ask: PriceVolume=None,
+                 source: str=None):
+        if not timestamp:
             self._timestamp = datetime.now()
 
         else:
-            self._timestamp = _timestamp
+            self._timestamp = timestamp
 
         self._bid = bid
         self._ask = ask
         self._source = source
-        self._pair = pair
 
     @property
     def timestamp(self) -> datetime:
@@ -114,19 +113,18 @@ class ForexQuote(object):
     def source(self) -> str:
         return self._source
 
-    @property
-    def pair(self) -> str:
-        return self._pair
-
     def is_complete(self) -> bool:
         return self.bid is not None and self.ask is not None
 
-    def to_json(self):
+    def to_dict(self):
         quote_data = {'timestamp': self.timestamp,
                       'bid': {'price': self.bid.price, 'amount': self.bid.volume},
                       'ask': {'price': self.ask.price, 'amount': self.ask.volume},
-                      'source': self.source, 'pair': self.pair}
-        return json.dumps(quote_data, cls=QuoteEncoder)
+                      'source': self.source}
+        return quote_data
+
+    def to_json(self):
+        return json.dumps(self.to_dict(), cls=QuoteEncoder)
 
     def __repr__(self):
         return '[{}:{}/{}]'.format(self.timestamp, self.bid, self.ask)
@@ -343,9 +341,9 @@ class ArbitrageStrategy(object):
             self._pair3, self._pair2 = indirect_pairs[0], indirect_pairs[1]
 
         self._quotes = {
-            self._pair1: ForexQuote(),
-            self._pair2: ForexQuote(),
-            self._pair3: ForexQuote()
+            self._pair1: ForexQuote(self._pair1),
+            self._pair2: ForexQuote(self._pair1),
+            self._pair3: ForexQuote(self._pair1)
         }
 
     def __repr__(self):
@@ -376,16 +374,16 @@ class ArbitrageStrategy(object):
         sorted_pairs = sorted([self._pair1, self._pair2, self._pair3])
         return sorted_pairs[0], sorted_pairs[1], sorted_pairs[2]
 
-    def update_quotes(self, order_book_callbak: Callable[[CurrencyPair], ForexQuote]):
+    def update_quotes(self, quotes_loader: Callable[[CurrencyPair], ForexQuote]):
         """
 
-        :param order_book_callbak: retrieves quote for given CurrencyPair instance
+        :param quotes_loader: retrieves quote for given CurrencyPair instance
         :return:
         """
         common_pair, indirect_pair_1, indirect_pair_2 = self.pairs
-        common_quote = order_book_callbak(common_pair)
-        indirect_quote_1 = order_book_callbak(indirect_pair_1)
-        indirect_quote_2 = order_book_callbak(indirect_pair_2)
+        common_quote = quotes_loader(common_pair)
+        indirect_quote_1 = quotes_loader(indirect_pair_1)
+        indirect_quote_2 = quotes_loader(indirect_pair_2)
         self._quotes = {
             common_pair: common_quote,
             indirect_pair_1: indirect_quote_1,
@@ -647,7 +645,7 @@ class OrderBook(object):
         timestamp = max(best_bid['timestamp'], best_ask['timestamp'])
         bid_side = PriceVolume(best_bid['price'], best_bid['amount'])
         ask_side = PriceVolume(best_ask['price'], best_ask['amount'])
-        return ForexQuote(timestamp, bid_side, ask_side, source=self.source, pair=self.pair)
+        return ForexQuote(timestamp, bid_side, ask_side, source=self.source)
 
     def to_json(self):
         return json.dumps({'bid': self.quotes_bid, 'ask': self.quotes_ask}, cls=QuoteEncoder)

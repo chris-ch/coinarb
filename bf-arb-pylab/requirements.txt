@@ -1,3 +1,4 @@
+python-dateutil
 websockets>=3.3
 bitfinex >= 0.2.6
 requests_cache >= 0.4.13

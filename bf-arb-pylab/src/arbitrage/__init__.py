@@ -2,10 +2,13 @@ import itertools
 import json
 import logging
 import re
+from decimal import Decimal
 from time import sleep
-from typing import Callable, Any, Generator, Iterable
+from datetime import datetime
+import dateutil.parser
+from typing import Callable, Generator, Iterable
 
-from arbitrage.entities import ArbitrageStrategy, CurrencyPair, CurrencyConverter, ForexQuote
+from arbitrage.entities import ArbitrageStrategy, CurrencyPair, CurrencyConverter, ForexQuote, OrderBook, PriceVolume
 
 
 def parse_pair_from_indirect(pair_code):
@@ -88,27 +91,39 @@ def create_strategies(pairs: Iterable[CurrencyPair]) -> Generator[ArbitrageStrat
             continue
 
 
-def scan_arbitrage_opportunities(strategy, order_book_callbak: Callable[[Any], Callable[[CurrencyPair], ForexQuote]],
-                                 bitfinex_client, illimited_volume):
+def scan_arbitrage_opportunities(strategy, quotes_loader: Callable[[CurrencyPair], ForexQuote],
+                                 illimited_volume):
     """
     Scanning arbitrage opportunities over the indicated pairs.
 
     :param strategy: iterable of pairs triplet
-    :param order_book_callbak:
+    :param quotes_loader:
     :param illimited_volume: emulates infinite liquidity
     :return:
     """
-    while True:  # TODO use websocket API instead
-        quotes = order_book_callbak(bitfinex_client)
-        strategy.update_quotes(quotes)
-        if strategy.quotes_valid:
-            trades, balances = strategy.find_opportunity(illimited_volume)
-            print(balances)
-            #converter = CurrencyConverter(market, order_book_callbak(bitfinex_client))
-            #bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
-            #if bitcoin_amount > 0:
-            #    logging.info('residual value: {}'.format(bitcoin_amount))
-            #    logging.info('trades:\n{}'.format(trades))
+    strategy.update_quotes(quotes_loader)
+    if strategy.quotes_valid:
+        trades, balances = strategy.find_opportunity(illimited_volume)
+        print(balances)
+        #converter = CurrencyConverter(market, order_book_callbak(bitfinex_client))
+        #bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
+        #if bitcoin_amount > 0:
+        #    logging.info('residual value: {}'.format(bitcoin_amount))
+        #    logging.info('trades:\n{}'.format(trades))
 
-        logging.info('---------------- sleeping 1 second ----------------')
-        sleep(1)
+    logging.info('---------------- sleeping 1 second ----------------')
+    sleep(1)
+
+
+def parse_quote(line):
+    """
+
+    :param line:
+    :return:
+    """
+    data = json.loads(line.strip())
+    timestamp = dateutil.parser.parse(data['timestamp'])
+    bid = PriceVolume(Decimal(data['bid']['price']), Decimal(data['bid']['amount']))
+    ask = PriceVolume(Decimal(data['ask']['price']), Decimal(data['ask']['amount']))
+    quote = ForexQuote(timestamp=timestamp, bid=bid, ask=ask, source=data['source'])
+    return quote
