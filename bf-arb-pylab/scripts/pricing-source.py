@@ -1,5 +1,6 @@
 import argparse
 import logging
+from collections import defaultdict
 
 from decimal import Decimal
 
@@ -75,7 +76,7 @@ async def consumer_handler(pairs, notify_update_func: Callable[[str, OrderBook],
                             updated = orderbooks[pair].update_bid(price, amount)
 
                         else:
-                            updated = orderbooks[pair].update_ask(price * -1, amount * -1)
+                            updated = orderbooks[pair].update_ask(price, amount)
 
                     else:
                         if amount == 1:
@@ -90,13 +91,17 @@ async def consumer_handler(pairs, notify_update_func: Callable[[str, OrderBook],
 
 def main(args):
     pairs = [''.join(pair.upper().split('/')) for pair in args.bitfinex.split(',')]
+    last_quote = defaultdict(lambda: None)
 
     def notify_update(pair, order_book):
-        level_one = order_book.level_one()
-        logging.info('{}: updated book {}'.format(pair, level_one))
-        level_one_dict = level_one.to_dict()
-        level_one_dict['pair'] = pair
-        print(json.dumps(level_one_dict, cls=QuoteEncoder))
+        level_one_quote = order_book.level_one()
+        if last_quote[pair] is None or level_one_quote.bid != last_quote[pair].bid or level_one_quote.ask != last_quote[pair].ask:
+            last_quote[pair] = level_one_quote
+            level_one_dict = level_one_quote.to_dict()
+            level_one_dict['pair'] = pair[:len(pair) // 2] + '/' + pair[len(pair) // 2:]
+            json_line = json.dumps(level_one_dict, cls=QuoteEncoder)
+            logging.info('{}: updated book {}'.format(pair, level_one_quote))
+            print(json_line)
 
     asyncio.get_event_loop().run_until_complete(consumer_handler(pairs, notify_update))
 

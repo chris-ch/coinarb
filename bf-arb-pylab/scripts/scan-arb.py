@@ -1,45 +1,15 @@
 import argparse
-import json
 import logging
 
 import sys
-import tenacity
-import bitfinex
 import requests_cache
-from decimal import Decimal
 
-from arbitrage import scan_arbitrage_opportunities, parse_strategy, parse_quote
-from arbitrage.entities import ForexQuote, CurrencyPair, PriceVolume
+from arbitrage import parse_strategy, parse_quote
 
 
 def main(args):
     if args.strategy:
-        strategy = parse_strategy(args.strategy, indirect_mode=True)
-
-        def order_book_l1(client: bitfinex.Client):
-            """
-            Creates a function returning a quote for a given currency pair.
-            :param client:
-            :return:
-            """
-            def wrapped(pair: CurrencyPair):
-                """
-
-                :param pair: CurrencyPair instance
-                :return:
-                """
-                pair_code = pair.to_direct(separator='')
-                result = client.order_book(pair_code)
-                result_bid = result['bids'][0]
-                result_ask = result['asks'][0]
-                bid_price = round(Decimal(result_bid['price']), 10)
-                ask_price = round(Decimal(result_ask['price']), 10)
-                bid_volume = round(Decimal(result_bid['amount']), 10)
-                ask_volume = round(Decimal(result_ask['amount']), 10)
-                timestamp = result_bid['timestamp']
-                return ForexQuote(timestamp, PriceVolume(bid_price, bid_volume), PriceVolume(ask_price, ask_volume), source='bitfinex')
-
-            return wrapped
+        strategy = parse_strategy(args.strategy)
 
         if args.replay:
             prices_input = open(args.replay, 'r')
@@ -50,8 +20,9 @@ def main(args):
 
         for line in prices_input:
             order_book_update = parse_quote(line)
-            print(order_book_update)
-            #scan_arbitrage_opportunities(strategy, order_book_l1, illimited_volume=True)
+            pair = order_book_update['pair']
+            quote = order_book_update['quote']
+            strategy.update_quote(pair, quote)
 
 
 if __name__ == '__main__':

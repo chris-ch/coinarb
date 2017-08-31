@@ -41,6 +41,15 @@ class PriceVolume(object):
     def __repr__(self):
         return '{}@{}'.format(self.volume, self.price)
 
+    def __hash__(self):
+        return hash(repr(self))
+
+    def __eq__(self, other):
+        return (self.price == other.price) and (self.volume == other.volume)
+
+    def __ne__(self, other):
+        return not self == other
+
 
 class CurrencyTrade(NamedTuple):
     direction: str
@@ -341,9 +350,9 @@ class ArbitrageStrategy(object):
             self._pair3, self._pair2 = indirect_pairs[0], indirect_pairs[1]
 
         self._quotes = {
-            self._pair1: ForexQuote(self._pair1),
-            self._pair2: ForexQuote(self._pair1),
-            self._pair3: ForexQuote(self._pair1)
+            self._pair1: ForexQuote(),
+            self._pair2: ForexQuote(),
+            self._pair3: ForexQuote()
         }
 
     def __repr__(self):
@@ -374,21 +383,14 @@ class ArbitrageStrategy(object):
         sorted_pairs = sorted([self._pair1, self._pair2, self._pair3])
         return sorted_pairs[0], sorted_pairs[1], sorted_pairs[2]
 
-    def update_quotes(self, quotes_loader: Callable[[CurrencyPair], ForexQuote]):
+    def update_quote(self, pair: CurrencyPair, quote: ForexQuote) -> None:
         """
 
-        :param quotes_loader: retrieves quote for given CurrencyPair instance
+        :param pair:
+        :param quote:
         :return:
         """
-        common_pair, indirect_pair_1, indirect_pair_2 = self.pairs
-        common_quote = quotes_loader(common_pair)
-        indirect_quote_1 = quotes_loader(indirect_pair_1)
-        indirect_quote_2 = quotes_loader(indirect_pair_2)
-        self._quotes = {
-            common_pair: common_quote,
-            indirect_pair_1: indirect_quote_1,
-            indirect_pair_2: indirect_quote_2
-        }
+        self._quotes[pair] = quote
 
     @property
     def quotes(self) -> Dict[CurrencyPair, ForexQuote]:
@@ -410,7 +412,7 @@ class ArbitrageStrategy(object):
 
         return is_valid
 
-    def find_opportunity(self, illimited_volume: bool, skip_capped: bool = True):
+    def find_opportunity(self, illimited_volume: bool, skip_capped: bool=True) -> Tuple[Any, Any]:
         """
 
         :param illimited_volume: emulates infinite liquidity
@@ -433,7 +435,7 @@ class ArbitrageStrategy(object):
 
         return opportunity
 
-    def apply_arbitrage(self, illimited_volume: bool):
+    def apply_arbitrage(self, illimited_volume: bool) -> Tuple[Any, Any]:
         """
 
         :param pair1:
@@ -530,18 +532,18 @@ class OrderBook(object):
     Models an order book.
     """
 
-    def __init__(self, pair, source):
+    def __init__(self, pair: CurrencyPair, source: str):
         self._quotes_bid_by_price = dict()
         self._quotes_ask_by_price = dict()
         self._pair = pair
         self._source = source
 
     @property
-    def source(self):
+    def source(self) -> str:
         return self._source
 
     @property
-    def pair(self):
+    def pair(self) -> CurrencyPair:
         return self._pair
 
     @property
@@ -554,7 +556,7 @@ class OrderBook(object):
         quotes_ask = order_entries(self._quotes_ask_by_price, reverse=False)
         return quotes_ask
 
-    def load_snapshot(self, snapshot):
+    def load_snapshot(self, snapshot) -> None:
         """
 
         :param snapshot:
@@ -571,7 +573,7 @@ class OrderBook(object):
                 self._quotes_ask_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': price * -1,
                                                              'amount': amount}
 
-    def remove_quote(self, price, quotes_by_price):
+    def remove_quote(self, price: Decimal, quotes_by_price: Dict[Decimal, ForexQuote]) -> bool:
         """
 
         :param price:
@@ -584,7 +586,7 @@ class OrderBook(object):
 
         return False
 
-    def remove_bid(self, price):
+    def remove_bid(self, price: Decimal) -> bool:
         """
 
         :param price:
@@ -592,7 +594,7 @@ class OrderBook(object):
         """
         return self.remove_quote(price, self._quotes_bid_by_price)
 
-    def remove_ask(self, price):
+    def remove_ask(self, price: Decimal) -> bool:
         """
 
         :param price:
@@ -600,7 +602,7 @@ class OrderBook(object):
         """
         return self.remove_quote(price, self._quotes_ask_by_price)
 
-    def update_quote(self, quotes_by_price, price, amount):
+    def update_quote(self, quotes_by_price: Dict[Decimal, Dict[str, Any]], price: Decimal, amount: Decimal) -> bool:
         """
 
         :param quotes_by_price:
@@ -618,7 +620,7 @@ class OrderBook(object):
 
         return True
 
-    def update_bid(self, price, amount):
+    def update_bid(self, price: Decimal, amount: Decimal) -> bool:
         """
 
         :param price:
@@ -627,7 +629,7 @@ class OrderBook(object):
         """
         return self.update_quote(self._quotes_bid_by_price, price, amount)
 
-    def update_ask(self, price, amount):
+    def update_ask(self, price: Decimal, amount: Decimal) -> bool:
         """
 
         :param price:
@@ -636,19 +638,19 @@ class OrderBook(object):
         """
         return self.update_quote(self._quotes_bid_by_price, price, amount)
 
-    def level_one(self):
+    def level_one(self) -> ForexQuote:
         """
         :return:
         """
         best_bid = self.quotes_bid[0]
         best_ask = self.quotes_ask[0]
         timestamp = max(best_bid['timestamp'], best_ask['timestamp'])
-        bid_side = PriceVolume(best_bid['price'], best_bid['amount'])
-        ask_side = PriceVolume(best_ask['price'], best_ask['amount'])
+        bid_side = PriceVolume(abs(best_bid['price']), abs(best_bid['amount']))
+        ask_side = PriceVolume(abs(best_ask['price']), abs(best_ask['amount']))
         return ForexQuote(timestamp, bid_side, ask_side, source=self.source)
 
-    def to_json(self):
+    def to_json(self) -> str:
         return json.dumps({'bid': self.quotes_bid, 'ask': self.quotes_ask}, cls=QuoteEncoder)
 
-    def __repr__(self):
+    def __repr__(self) -> str():
         return self.to_json()

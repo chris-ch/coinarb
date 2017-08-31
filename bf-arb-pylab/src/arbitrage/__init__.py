@@ -3,15 +3,13 @@ import json
 import logging
 import re
 from decimal import Decimal
-from time import sleep
-from datetime import datetime
 import dateutil.parser
-from typing import Callable, Generator, Iterable
+from typing import Generator, Iterable, Dict, Any, Tuple
 
 from arbitrage.entities import ArbitrageStrategy, CurrencyPair, CurrencyConverter, ForexQuote, OrderBook, PriceVolume
 
 
-def parse_pair_from_indirect(pair_code):
+def parse_pair_from_indirect(pair_code: str) -> CurrencyPair:
     """
 
     :param pair_code: concatenated currency codes, base last
@@ -20,7 +18,7 @@ def parse_pair_from_indirect(pair_code):
     return CurrencyPair(pair_code[len(pair_code) // 2:], pair_code[:len(pair_code) // 2])
 
 
-def parse_pair_from_direct(pair_code):
+def parse_pair_from_direct(pair_code: str) -> CurrencyPair:
     """
 
     :param pair_code: concatenated currency codes, base first
@@ -29,7 +27,7 @@ def parse_pair_from_direct(pair_code):
     return CurrencyPair(pair_code[:len(pair_code) // 2], pair_code[len(pair_code) // 2:])
 
 
-def parse_currency_pair(pair_string, separator='/', indirect_mode=False):
+def parse_currency_pair(pair_string: str, separator: str='/', indirect_mode: bool=False) -> CurrencyPair:
     """
 
     :param pair_string: format <pair_1/pair_2> with / used as separator
@@ -45,7 +43,7 @@ def parse_currency_pair(pair_string, separator='/', indirect_mode=False):
     return CurrencyPair(pair1, pair2)
 
 
-def parse_strategy(strategy_string, indirect_mode=False):
+def parse_strategy(strategy_string: str, indirect_mode: bool=False) -> ArbitrageStrategy:
     """
     :param strategy_string: example [<btc/eth>,<usd/btc>,<usd/eth>]
     :param indirect_mode: quote currency comes first
@@ -91,31 +89,7 @@ def create_strategies(pairs: Iterable[CurrencyPair]) -> Generator[ArbitrageStrat
             continue
 
 
-def scan_arbitrage_opportunities(strategy, quotes_loader: Callable[[CurrencyPair], ForexQuote],
-                                 illimited_volume):
-    """
-    Scanning arbitrage opportunities over the indicated pairs.
-
-    :param strategy: iterable of pairs triplet
-    :param quotes_loader:
-    :param illimited_volume: emulates infinite liquidity
-    :return:
-    """
-    strategy.update_quotes(quotes_loader)
-    if strategy.quotes_valid:
-        trades, balances = strategy.find_opportunity(illimited_volume)
-        print(balances)
-        #converter = CurrencyConverter(market, order_book_callbak(bitfinex_client))
-        #bitcoin_amount = converter.exchange(balances['currency'], balances['remainder'])
-        #if bitcoin_amount > 0:
-        #    logging.info('residual value: {}'.format(bitcoin_amount))
-        #    logging.info('trades:\n{}'.format(trades))
-
-    logging.info('---------------- sleeping 1 second ----------------')
-    sleep(1)
-
-
-def parse_quote(line):
+def parse_quote(line: str) -> Tuple[CurrencyPair, ForexQuote]:
     """
 
     :param line:
@@ -126,4 +100,5 @@ def parse_quote(line):
     bid = PriceVolume(Decimal(data['bid']['price']), Decimal(data['bid']['amount']))
     ask = PriceVolume(Decimal(data['ask']['price']), Decimal(data['ask']['amount']))
     quote = ForexQuote(timestamp=timestamp, bid=bid, ask=ask, source=data['source'])
-    return quote
+    pair = parse_currency_pair(data['pair'])
+    return (pair, quote)
