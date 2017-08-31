@@ -3,7 +3,6 @@ import logging
 
 from decimal import Decimal
 
-from collections import defaultdict
 from typing import Callable, Any
 
 from arbitrage.entities import OrderBook, QuoteEncoder
@@ -76,7 +75,7 @@ async def consumer_handler(pairs, notify_update_func: Callable[[str, OrderBook],
                             updated = orderbooks[pair].update_bid(price, amount)
 
                         else:
-                            updated = orderbooks[pair].update_ask(price, amount)
+                            updated = orderbooks[pair].update_ask(price * -1, amount * -1)
 
                     else:
                         if amount == 1:
