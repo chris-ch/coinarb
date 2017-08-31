@@ -419,19 +419,22 @@ class ArbitrageStrategy(object):
         :param skip_capped:
         :return:
         """
-        logging.info('trying strategy'.format(self))
         opportunity = None, None
-        balances_df, trades_df = self.apply_arbitrage(illimited_volume)
-        balances_by_currency = balances_df.sum(axis=1)
-        remainder = balances_by_currency.round(6)[balances_by_currency > 0]
-        if not skip_capped or trades_df['capped'].count() == 0:
-            logging.info('adding new opportunity:\n{}'.format(trades_df))
-            logging.info('resulting balances:\n{}'.format(balances_by_currency))
-            logging.info('remaining: {}'.format(remainder))
-            opportunity = trades_df, balances_by_currency
+        if self.quotes_valid:
+            balances_df, trades_df = self.apply_arbitrage(illimited_volume)
+            balances_by_currency = balances_df.sum(axis=1)
+            remainder = balances_by_currency.round(6)[balances_by_currency > 0]
+            if not skip_capped or trades_df['capped'].count() == 0:
+                logging.info('adding new opportunity:\n{}'.format(trades_df))
+                logging.info('resulting balances:\n{}'.format(balances_by_currency))
+                logging.info('remaining: {}'.format(remainder))
+                opportunity = trades_df, balances_by_currency
+
+            else:
+                logging.info('no opportunity')
 
         else:
-            logging.info('no opportunity')
+            logging.info('incomplete quotes')
 
         return opportunity
 

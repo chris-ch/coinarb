@@ -100,5 +100,5 @@ def parse_quote(line: str) -> Tuple[CurrencyPair, ForexQuote]:
     bid = PriceVolume(Decimal(data['bid']['price']), Decimal(data['bid']['amount']))
     ask = PriceVolume(Decimal(data['ask']['price']), Decimal(data['ask']['amount']))
     quote = ForexQuote(timestamp=timestamp, bid=bid, ask=ask, source=data['source'])
-    pair = parse_currency_pair(data['pair'])
-    return (pair, quote)
+    pair = parse_currency_pair(data['pair'], separator='/')
+    return pair, quote
