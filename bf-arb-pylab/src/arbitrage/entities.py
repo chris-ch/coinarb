@@ -152,8 +152,8 @@ class CurrencyPair(object):
         :param base_currency_code: currency that is quoted
         :param quote_currency_code: currency that is used as the reference
         """
-        self._base_currency_code = base_currency_code
-        self._quote_currency_code = quote_currency_code
+        self._base_currency_code = base_currency_code.upper()
+        self._quote_currency_code = quote_currency_code.upper()
 
     def buy(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[Dict[str,
                                                                                                     Decimal], CurrencyTrade]:
@@ -233,7 +233,7 @@ class CurrencyPair(object):
 
         else:
             # Indirect quotation
-            target_volume = Decimal(volume / quote.bid.price)
+            target_volume = Decimal(volume) / quote.bid.price
             balances, performed_trade = self.sell(quote, target_volume, illimited_volume)
 
         return balances, performed_trade
@@ -458,8 +458,16 @@ class ArbitrageStrategy(object):
                                                                balance_initial[self.indirect_pairs[0].quote],
                                                                illimited_volume)
         logging.info('balance step 2: {}'.format(balance_next))
-        balance_final, trade_final = self.direct_pair.buy_currency(self.direct_pair.base, abs(balance_initial[self.direct_pair.base]),
-                                                                   self.quotes[self.direct_pair], illimited_volume)
+        if self.direct_pair.base in balance_initial:
+            settling_amount = balance_initial[self.direct_pair.base]
+            balance_final, trade_final = self.direct_pair.buy_currency(self.direct_pair.base, abs(settling_amount),
+                                                                       self.quotes[self.direct_pair], illimited_volume)
+
+        else:
+            settling_amount = balance_initial[self.direct_pair.quote]
+            balance_final, trade_final = self.direct_pair.buy_currency(self.direct_pair.quote, abs(settling_amount),
+                                                                       self.quotes[self.direct_pair], illimited_volume)
+
         logging.info('balance step 3: {}'.format(balance_final))
         balance1_series = pandas.Series(balance_initial, name='initial')
         balance2_series = pandas.Series(balance_next, name='next')
@@ -484,10 +492,10 @@ class CurrencyConverter(object):
         :param direct: when foreign currency comes first in market name
         """
         if direct:
-            self._domestic_currency, self._foreign_currency = market
+            self._domestic_currency, self._foreign_currency = market[0].upper(), market[1].upper()
 
         else:
-            self._foreign_currency, self._domestic_currency = market
+            self._foreign_currency, self._domestic_currency = market[0].upper(), market[1].upper()
 
         self._order_book_callback = order_book_callback
 
@@ -520,11 +528,11 @@ class CurrencyConverter(object):
 
     def sell(self, currency: str, amount: Decimal) -> Decimal:
         assert amount >= 0
-        return self.exchange(currency, amount)
+        return self.exchange(currency.upper(), amount)
 
     def buy(self, currency: str, amount: Decimal) -> Decimal:
         assert amount >= 0
-        return self.exchange(currency, -amount)
+        return self.exchange(currency.upper(), -amount)
 
 
 def order_entries(quotes: Dict[Decimal, Tuple[datetime, Decimal, int]], reverse=False) -> List[Dict[str, Any]]:
@@ -573,13 +581,12 @@ class OrderBook(object):
         channel_id, book_data = snapshot
         for price, count, amount in book_data:
             timestamp = datetime.utcnow()
-            amount = Decimal(amount)
             if Decimal(amount) > 0:
-                self._quotes_bid_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': price, 'amount': amount}
+                self._quotes_bid_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': Decimal(price), 'amount': Decimal(amount)}
 
             else:
-                self._quotes_ask_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': price * -1,
-                                                             'amount': amount}
+                self._quotes_ask_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': Decimal(price) * -1,
+                                                             'amount': Decimal(amount)}
 
     def remove_quote(self, price: Decimal, quotes_by_price: Dict[Decimal, ForexQuote]) -> bool:
         """

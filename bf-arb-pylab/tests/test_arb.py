@@ -58,9 +58,9 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
             return ForexQuote(datetime(2017, 1, 1), bid, ask)
 
         converter = CurrencyConverter(('usd', 'gbp'), quote_loader)
-        self.assertEqual(converter.buy('gbp', Decimal('0.66')), Decimal(-1))  # 0.66 GBP cost 1 USD
-        self.assertEqual(converter.sell('gbp', Decimal('0.67')), Decimal(1))  # 0.67 GBP needed for receiving 1 USD
-        self.assertAlmostEqual(converter.buy('gbp', Decimal('1.')), Decimal(-1.52), places=2)  # 1 GBP costs 1.52 USD
+        self.assertEqual(converter.buy('GBP', Decimal('0.66')), Decimal(-1))  # 0.66 GBP cost 1 USD
+        self.assertEqual(converter.sell('GBP', Decimal('0.67')), Decimal(1))  # 0.67 GBP needed for receiving 1 USD
+        self.assertAlmostEqual(converter.buy('GBP', Decimal('1.')), Decimal('-1.5151515'), places=5)  # 1 GBP costs 1.52 USD
 
     def test_arbitrage_ordering(self):
         currencies = ('A', 'B', 'C')
@@ -104,7 +104,7 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
 
         balance_sell_eur_chf, trade_sell_eur_chf = pair_eur_chf.sell(quote_eur_chf, Decimal(1000),
                                                                      illimited_volume=True)
-        balance_sell_chf_usd, trade_sell_chf_usd = pair_chf_usd.sell(quote_chf_usd, balance_sell_eur_chf['chf'],
+        balance_sell_chf_usd, trade_sell_chf_usd = pair_chf_usd.sell(quote_chf_usd, balance_sell_eur_chf['CHF'],
                                                                      illimited_volume=True)
         balance_buy_eur_usd, trade_buy_eur_usd = pair_eur_usd.buy_currency(pair_eur_chf.base, Decimal(1000),
                                                                            quote_eur_usd, illimited_volume=True)
@@ -119,68 +119,58 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         self.assertAlmostEqual(trade_sell_chf_usd.price, Decimal('1.04'), places=18)
         self.assertAlmostEqual(trade_buy_eur_usd.price, Decimal('1.18'), places=18)
 
-        self.assertAlmostEqual(balance_sell_eur_chf['eur'], Decimal('-1000'), places=18)
-        self.assertAlmostEqual(balance_sell_eur_chf['chf'], Decimal('1140'), places=18)
-        self.assertAlmostEqual(balance_sell_chf_usd['chf'], Decimal('-1140'), places=18)
-        self.assertAlmostEqual(balance_sell_chf_usd['usd'], Decimal('1185.6'), places=18)
-        self.assertAlmostEqual(balance_buy_eur_usd['eur'], Decimal('1000'), places=18)
-        self.assertAlmostEqual(balance_buy_eur_usd['usd'], Decimal('-1180'), places=18)
+        self.assertAlmostEqual(balance_sell_eur_chf['EUR'], Decimal('-1000'), places=18)
+        self.assertAlmostEqual(balance_sell_eur_chf['CHF'], Decimal('1140'), places=18)
+        self.assertAlmostEqual(balance_sell_chf_usd['CHF'], Decimal('-1140'), places=18)
+        self.assertAlmostEqual(balance_sell_chf_usd['USD'], Decimal('1185.6'), places=18)
+        self.assertAlmostEqual(balance_buy_eur_usd['EUR'], Decimal('1000'), places=18)
+        self.assertAlmostEqual(balance_buy_eur_usd['USD'], Decimal('-1180'), places=18)
 
     def test_arbitrage_1(self):
-        def quote_loader(pair):
-            if pair == CurrencyPair('eur', 'chf'):
-                bid = PriceVolume(Decimal('1.14'), Decimal(100))
-                ask = PriceVolume(Decimal('1.15'), Decimal(100))
-            elif pair == CurrencyPair('chf', 'usd'):
-                bid = PriceVolume(Decimal('1.04'), Decimal(100))
-                ask = PriceVolume(Decimal('1.05'), Decimal(100))
-            elif pair == CurrencyPair('usd', 'eur'):
-                bid = PriceVolume(Decimal('0.845'), Decimal(100))
-                ask = PriceVolume(Decimal('0.855'), Decimal(100))
-            else:
-                raise NotImplementedError('illegal pair: {}'.format(pair))
-
-            return ForexQuote(datetime(2017, 1, 1), bid, ask)
-
-        input = '<eur/chf>,<chf/usd>,<usd/eur>'
+        bid = PriceVolume(Decimal('1.14'), Decimal(100))
+        ask = PriceVolume(Decimal('1.15'), Decimal(100))
+        quote_eur_chf = ForexQuote(datetime(2017, 1, 1), bid, ask)
+        bid = PriceVolume(Decimal('1.04'), Decimal(100))
+        ask = PriceVolume(Decimal('1.05'), Decimal(100))
+        quote_chf_usd = ForexQuote(datetime(2017, 1, 1), bid, ask)
+        bid = PriceVolume(Decimal('0.845'), Decimal(100))
+        ask = PriceVolume(Decimal('0.855'), Decimal(100))
+        quote_usd_eur = ForexQuote(datetime(2017, 1, 1), bid, ask)
+        input = '<chf/usd>,<eur/chf>,<usd/eur>'
         strategy = parse_strategy(input)
         self.assertEqual(strategy.direct_pair, CurrencyPair('usd', 'eur'))
         self.assertEqual(strategy.indirect_pairs[0], CurrencyPair('eur', 'chf'))
         self.assertEqual(strategy.indirect_pairs[1], CurrencyPair('chf', 'usd'))
-        strategy.update_quotes(quote_loader)
+        strategy.update_quote(strategy.direct_pair, quote_usd_eur)
+        strategy.update_quote(strategy.indirect_pairs[0], quote_eur_chf)
+        strategy.update_quote(strategy.indirect_pairs[1], quote_chf_usd)
         self.assertTrue(strategy.quotes_valid)
         balances, trades = strategy.apply_arbitrage(illimited_volume=True)
-        self.assertAlmostEqual(balances['next'].loc['usd'], Decimal('1.185600'), places=6)
-        self.assertAlmostEqual(balances['final'].loc['usd'], Decimal('-1.183432'), places=6)
+        self.assertAlmostEqual(balances['next'].loc['USD'], Decimal('1.185600'), places=6)
+        self.assertAlmostEqual(balances['final'].loc['USD'], Decimal('-1.183432'), places=6)
 
     def test_arbitrage_2(self):
-        def quote_loader(pair):
-            if pair == CurrencyPair('eur', 'chf'):
-                bid = PriceVolume(Decimal('1.14'), Decimal(100))
-                ask = PriceVolume(Decimal('1.15'), Decimal(100))
-            elif pair == CurrencyPair('chf', 'usd'):
-                bid = PriceVolume(Decimal('1.04'), Decimal(100))
-                ask = PriceVolume(Decimal('1.05'), Decimal(100))
-            elif pair == CurrencyPair('eur', 'usd'):
-                bid = PriceVolume(Decimal('1.18'), Decimal(100))
-                ask = PriceVolume(Decimal('1.19'), Decimal(100))
-            else:
-                raise NotImplementedError('illegal pair: {}'.format(pair))
-
-            return ForexQuote(datetime(2017, 1, 1), bid, ask)
-
-        input = '[<eur/chf>,<chf/usd>,<eur/usd>]'
+        bid = PriceVolume(Decimal('1.3392'), Decimal('17.30488026'))
+        ask = PriceVolume(Decimal('1.3442'), Decimal('8.37'))
+        quote_eos_usd = ForexQuote(datetime(2017, 1, 1), bid, ask)
+        bid = PriceVolume(Decimal('0.00028465'), Decimal('0.339'))
+        ask = PriceVolume(Decimal('0.00028544'), Decimal('0.339'))
+        quote_eos_btc = ForexQuote(datetime(2017, 1, 1), bid, ask)
+        bid = PriceVolume(Decimal('4712.9'), Decimal('4.75014876'))
+        ask = PriceVolume(Decimal('4713'), Decimal('3.83742889'))
+        quote_btc_usd = ForexQuote(datetime(2017, 1, 1), bid, ask)
+        input = '<eos/usd>,<eos/btc>,<btc/usd>'
         strategy = parse_strategy(input)
-        self.assertEqual(strategy.direct_pair, CurrencyPair('eur', 'usd'))
-        self.assertEqual(strategy.indirect_pairs[0], CurrencyPair('eur', 'chf'))
-        self.assertEqual(strategy.indirect_pairs[1], CurrencyPair('chf', 'usd'))
-        strategy.update_quotes(quote_loader)
+        self.assertEqual(strategy.direct_pair, CurrencyPair('eos', 'usd'))
+        self.assertEqual(strategy.indirect_pairs[0], CurrencyPair('eos', 'btc'))
+        self.assertEqual(strategy.indirect_pairs[1], CurrencyPair('btc', 'usd'))
+        strategy.update_quote(strategy.direct_pair, quote_eos_usd)
+        strategy.update_quote(strategy.indirect_pairs[0], quote_eos_btc)
+        strategy.update_quote(strategy.indirect_pairs[1], quote_btc_usd)
         self.assertTrue(strategy.quotes_valid)
         balances, trades = strategy.apply_arbitrage(illimited_volume=True)
-        total = balances.sum(axis=1)
-        self.assertAlmostEqual(total['usd'], -0.0044, places=4)
-        self.assertAlmostEqual(total['chf'], 0, places=4)
-        self.assertAlmostEqual(total['eur'], 0, places=4)
+        self.assertAlmostEqual(balances['next'].loc['USD'], Decimal('1.341526985'), places=10)
+        self.assertAlmostEqual(balances['final'].loc['USD'], Decimal('-1.3442'), places=4)
 
     def test_orderbook(self):
         snapshot = ['75', [['0.0003346', '4', '37.62485165'], ['0.00033459', '1', '8730.72318672'], ['0.000333', '1', '350'],
@@ -199,12 +189,12 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
                          ['0.00033887', '1', '-12.46962851'], ['0.0003396', '1', '-20'], ['0.00033969', '1', '-729.26098'],
                          ['0.0003397', '1', '-4568.4'], ['0.0003408', '1', '-5721.8059'], ['0.0003409', '1', '-50000'],
                          ['0.00034095', '1', '-0.15968'], ['0.00034149', '1', '-5.09291225']]]
-        orderbook = OrderBook()
+        orderbook = OrderBook(CurrencyPair('eur', 'usd'), 'test')
         orderbook.load_snapshot(snapshot)
         self.assertEqual(orderbook.quotes_bid[0]['price'], Decimal('0.0003346'))
         self.assertEqual(orderbook.quotes_bid[-1]['price'], Decimal('0.00032021'))
-        self.assertEqual(orderbook.quotes_ask[0]['price'], Decimal('0.00033529'))
-        self.assertEqual(orderbook.quotes_ask[-1]['price'], Decimal('0.00034149'))
+        self.assertEqual(orderbook.quotes_ask[0]['price'], Decimal('-0.00033529'))
+        self.assertEqual(orderbook.quotes_ask[-1]['price'], Decimal('-0.00034149'))
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s')

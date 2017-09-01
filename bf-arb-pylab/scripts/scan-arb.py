@@ -46,7 +46,4 @@ if __name__ == '__main__':
     parser.add_argument('--replay', type=str, help='use recorded prices')
 
     args = parser.parse_args()
-    # DEBUGGING
-    requests_cache.install_cache('demo_cache')
-
     main(args)
