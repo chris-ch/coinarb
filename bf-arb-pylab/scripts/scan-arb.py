@@ -4,6 +4,7 @@ import logging
 import sys
 from collections import defaultdict
 from decimal import Decimal
+from datetime import datetime
 
 from arbitrage import parse_strategy, parse_quote
 
@@ -45,7 +46,8 @@ def main(args):
                     break
 
             if enable_trades:
-                print(target_trades)
+                now = datetime.now()
+                print('{}: {}'.format(now, target_trades))
 
     else:
         logging.info('no strategy provided: terminating')
