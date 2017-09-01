@@ -10,7 +10,7 @@ from arbitrage import parse_strategy, parse_quote
 def main(args):
     if args.strategy:
         strategy = parse_strategy(args.strategy.upper())
-
+        logging.info('starting strategy: {}'.format(strategy))
         if args.replay:
             prices_input = open(args.replay, 'r')
 
@@ -19,11 +19,15 @@ def main(args):
             prices_input = sys.stdin
 
         for line in prices_input:
-            logging.info('receiving update')
-            logging.info('strategy book: {}'.format(strategy.quotes))
-            pair, quote = parse_quote(line)
-            strategy.update_quote(pair, quote)
-            strategy.find_opportunity(illimited_volume=False, skip_capped=False)
+            if len(line.strip()) > 0:
+                logging.info('received update: {}'.format(line))
+                logging.info('strategy book: {}'.format(strategy.quotes))
+                pair, quote = parse_quote(line)
+                strategy.update_quote(pair, quote)
+                strategy.find_opportunity(illimited_volume=False, skip_capped=False)
+
+    else:
+        logging.info('no strategy provided: terminating')
 
 
 if __name__ == '__main__':

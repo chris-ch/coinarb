@@ -6,6 +6,10 @@ from decimal import Decimal
 
 from typing import Callable, Any
 
+import os
+
+import sys
+
 from arbitrage.entities import OrderBook, QuoteEncoder
 
 import json
@@ -67,7 +71,7 @@ async def consumer_handler(pairs, notify_update_func: Callable[[str, OrderBook],
                     logging.info('> loaded snapshot order book {}'.format(orderbooks[pair]))
                     notify_update_func(pair, orderbooks[pair])
 
-                else:
+                elif len(response) == 4:
                     # Order Book update
                     channel_id, price, count, amount = response
                     pair = channel_pair_mapping[channel_id]
@@ -88,8 +92,12 @@ async def consumer_handler(pairs, notify_update_func: Callable[[str, OrderBook],
                     if updated:
                         notify_update_func(pair, orderbooks[pair])
 
+                else:
+                    logging.error('unexpected response: {}'.format(response))
+
 
 def main(args):
+    unbuffered_stdout = os.fdopen(sys.stdout.fileno(), 'wb', 0)
     pairs = [''.join(pair.upper().split('/')) for pair in args.bitfinex.split(',')]
     last_quote = defaultdict(lambda: None)
 
@@ -101,7 +109,8 @@ def main(args):
             level_one_dict['pair'] = pair[:len(pair) // 2] + '/' + pair[len(pair) // 2:]
             json_line = json.dumps(level_one_dict, cls=QuoteEncoder)
             logging.info('{}: updated book {}'.format(pair, level_one_quote))
-            print(json_line)
+            unbuffered_stdout.write(json_line.encode('utf-8'))
+            unbuffered_stdout.write('\n'.encode('utf-8'))
 
     asyncio.get_event_loop().run_until_complete(consumer_handler(pairs, notify_update))
 
