@@ -42,12 +42,10 @@ def main(args):
             for currency in target_balances:
                 if target_balances[currency] > thresholds['currency']:
                     enable_trades = True
-                    print(currency, target_balances[currency], thresholds['currency'])
                     break
 
             if enable_trades:
                 print(target_trades)
-                print(target_balances)
 
     else:
         logging.info('no strategy provided: terminating')
