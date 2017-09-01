@@ -4,7 +4,7 @@ import logging
 import re
 from decimal import Decimal
 import dateutil.parser
-from typing import Generator, Iterable, Dict, Any, Tuple
+from typing import Generator, Iterable, Tuple
 
 from arbitrage.entities import ArbitrageStrategy, CurrencyPair, CurrencyConverter, ForexQuote, OrderBook, PriceVolume
 
