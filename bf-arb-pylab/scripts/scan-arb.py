@@ -19,9 +19,11 @@ def main(args):
             prices_input = sys.stdin
 
         for line in prices_input:
+            logging.info('receiving update')
+            logging.info('strategy book: {}'.format(strategy.quotes))
             pair, quote = parse_quote(line)
             strategy.update_quote(pair, quote)
-            strategy.find_opportunity(illimited_volume=True)
+            strategy.find_opportunity(illimited_volume=False, skip_capped=False)
 
 
 if __name__ == '__main__':

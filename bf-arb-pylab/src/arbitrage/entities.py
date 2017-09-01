@@ -225,6 +225,7 @@ class CurrencyPair(object):
         :return: resulting balance and performed trades (balance, performed_trade)
         """
         assert currency in self.assets, 'currency {} not in pair {}'.format(currency, self)
+        assert volume >= 0
         logging.debug('buying {} {} using pair {}'.format(volume, currency, self))
         if currency == self.base:
             # Direct quotation
@@ -248,6 +249,7 @@ class CurrencyPair(object):
         :return: resulting balance and performed trades (balance, performed_trade)
         """
         assert currency in self.assets, 'currency {} not in pair {}'.format(currency, self)
+        assert volume >= 0
         logging.debug('selling {} {} using pair {}'.format(volume, currency, self))
         if currency == self.base:
             # Direct quotation
@@ -447,15 +449,18 @@ class ArbitrageStrategy(object):
         :param illimited_volume:
         :return:
         """
-        logging.info('accumulating currency: {}'.format(self.indirect_pairs[0].base))
+        logging.info('accumulating currency: {}'.format(self.direct_pair.quote))
         initial_amount = Decimal(1)
         balance_initial, trade_initial = self.indirect_pairs[0].sell(self.quotes[self.indirect_pairs[0]],
                                                                      initial_amount, illimited_volume)
+        logging.info('balance step 1: {}'.format(balance_initial))
         balance_next, trade_next = self.indirect_pairs[1].sell(self.quotes[self.indirect_pairs[1]],
                                                                balance_initial[self.indirect_pairs[0].quote],
                                                                illimited_volume)
-        balance_final, trade_final = self.direct_pair.buy_currency(self.indirect_pairs[0].base, initial_amount,
+        logging.info('balance step 2: {}'.format(balance_next))
+        balance_final, trade_final = self.direct_pair.buy_currency(self.direct_pair.base, abs(balance_initial[self.direct_pair.base]),
                                                                    self.quotes[self.direct_pair], illimited_volume)
+        logging.info('balance step 3: {}'.format(balance_final))
         balance1_series = pandas.Series(balance_initial, name='initial')
         balance2_series = pandas.Series(balance_next, name='next')
         balance3_series = pandas.Series(balance_final, name='final')
