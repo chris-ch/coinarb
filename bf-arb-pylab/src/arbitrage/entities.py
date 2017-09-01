@@ -94,8 +94,8 @@ class ForexQuote(object):
     Models a forex quote.
     """
 
-    def __init__(self, timestamp: datetime=None, bid: PriceVolume=None, ask: PriceVolume=None,
-                 source: str=None):
+    def __init__(self, timestamp: datetime = None, bid: PriceVolume = None, ask: PriceVolume = None,
+                 source: str = None):
         if not timestamp:
             self._timestamp = datetime.now()
 
@@ -414,7 +414,7 @@ class ArbitrageStrategy(object):
 
         return is_valid
 
-    def find_opportunity(self, illimited_volume: bool, skip_capped: bool=True) -> Tuple[Any, Any]:
+    def find_opportunity(self, illimited_volume: bool, skip_capped: bool = True) -> Tuple[Any, Any]:
         """
 
         :param illimited_volume: emulates infinite liquidity
@@ -425,12 +425,10 @@ class ArbitrageStrategy(object):
         if self.quotes_valid:
             balances_df, trades_df = self.apply_arbitrage(illimited_volume)
             balances_by_currency = balances_df.sum(axis=1)
-            remainder = balances_by_currency.round(6)[balances_by_currency > 0]
             if not skip_capped or trades_df['capped'].count() == 0:
                 logging.info('adding new opportunity:\n{}'.format(trades_df))
                 logging.info('resulting balances:\n{}'.format(balances_by_currency))
-                logging.info('remaining: {}'.format(remainder))
-                opportunity = trades_df, balances_by_currency
+                opportunity = trades_df.to_dict(orient='records'), balances_by_currency.to_dict()
 
             else:
                 logging.info('no opportunity')
@@ -582,7 +580,8 @@ class OrderBook(object):
         for price, count, amount in book_data:
             timestamp = datetime.utcnow()
             if Decimal(amount) > 0:
-                self._quotes_bid_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': Decimal(price), 'amount': Decimal(amount)}
+                self._quotes_bid_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': Decimal(price),
+                                                             'amount': Decimal(amount)}
 
             else:
                 self._quotes_ask_by_price[Decimal(price)] = {'timestamp': timestamp, 'price': Decimal(price) * -1,
