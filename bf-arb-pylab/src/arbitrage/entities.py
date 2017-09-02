@@ -438,15 +438,15 @@ class ArbitrageStrategy(object):
         :param illimited_volume:
         :return:
         """
-        logging.info('accumulating currency: {}'.format(self.direct_pair.quote))
+        logging.debug('accumulating currency: {}'.format(self.direct_pair.quote))
         initial_amount = self.quotes[self.indirect_pairs[0]].bid.volume
         balance_initial, trade_initial = self.indirect_pairs[0].sell(self.quotes[self.indirect_pairs[0]],
                                                                      initial_amount, illimited_volume)
-        logging.info('balance step 1: {}'.format(balance_initial))
+        logging.debug('balance step 1: {}'.format(balance_initial))
         balance_next, trade_next = self.indirect_pairs[1].sell(self.quotes[self.indirect_pairs[1]],
                                                                balance_initial[self.indirect_pairs[0].quote],
                                                                illimited_volume)
-        logging.info('balance step 2: {}'.format(balance_next))
+        logging.debug('balance step 2: {}'.format(balance_next))
         if self.direct_pair.base in balance_initial:
             settling_amount = balance_initial[self.direct_pair.base]
             balance_final, trade_final = self.direct_pair.buy_currency(self.direct_pair.base, abs(settling_amount),
@@ -457,7 +457,7 @@ class ArbitrageStrategy(object):
             balance_final, trade_final = self.direct_pair.buy_currency(self.direct_pair.quote, abs(settling_amount),
                                                                        self.quotes[self.direct_pair], illimited_volume)
 
-        logging.info('balance step 3: {}'.format(balance_final))
+        logging.debug('balance step 3: {}'.format(balance_final))
         balance1_series = pandas.Series(balance_initial, name='initial')
         balance2_series = pandas.Series(balance_next, name='next')
         balance3_series = pandas.Series(balance_final, name='final')

@@ -116,7 +116,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s', filename='pricing-source.log')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s', filename='pricing-source.log', filemode='w')
     parser = argparse.ArgumentParser(description='Sending quotes for subscribed prices.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter
                                      )

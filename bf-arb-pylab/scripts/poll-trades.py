@@ -7,7 +7,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s', filename='poll-trades.log')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s', filename='poll-trades.log', filemode='w')
     logging.getLogger('requests').setLevel(logging.WARNING)
     formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
     parser = argparse.ArgumentParser(description='Executing trades.',

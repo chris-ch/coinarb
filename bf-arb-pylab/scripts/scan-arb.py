@@ -31,10 +31,10 @@ def main(args):
             if len(line.strip()) == 0:
                 continue
 
-            logging.info('received update: {}'.format(line))
+            logging.debug('received update: {}'.format(line))
             pair, quote = parse_quote_json(line)
             strategy.update_quote(pair, quote)
-            logging.info('strategy book: {}'.format(strategy.quotes))
+            logging.debug('strategy book: {}'.format(strategy.quotes))
             target_trades, target_balances = strategy.find_opportunity(illimited_volume=False)
             if target_balances is None:
                 continue
@@ -54,7 +54,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s', filename='scan-arb.log')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s:%(name)s:%(levelname)s:%(message)s', filename='scan-arb.log', filemode='w')
     logging.getLogger('requests').setLevel(logging.WARNING)
     formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
     parser = argparse.ArgumentParser(description='Scanning arbitrage opportunities.',
