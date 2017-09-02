@@ -56,7 +56,7 @@ class CurrencyTrade(NamedTuple):
     pair: str
     quantity: Decimal
     price: Decimal
-    capped: bool
+    fill_ratio: float
 
 
 class CurrencyBalance(object):
@@ -174,14 +174,11 @@ class CurrencyPair(object):
         else:
             allowed_volume = min(volume, quote.ask.volume)
 
-        capped = numpy.NaN
-        if allowed_volume < volume:
-            capped = allowed_volume
-
+        fill_ratio = allowed_volume / volume
         balances = {self.base: CurrencyBalance(self.base, allowed_volume).amount,
                     self.quote: CurrencyBalance(self.quote, Decimal(allowed_volume * price * -1)).amount
                     }
-        trade = CurrencyTrade('buy', repr(self), allowed_volume, price, capped)
+        trade = CurrencyTrade('buy', repr(self), allowed_volume, price, fill_ratio)
         return balances, trade
 
     def sell(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[Dict[str,
@@ -204,14 +201,11 @@ class CurrencyPair(object):
         else:
             allowed_volume = min(volume, quote.bid.volume)
 
-        capped = numpy.NaN
-        if allowed_volume < volume:
-            capped = allowed_volume
-
+        fill_ratio = allowed_volume / volume
         balances = {self.base: CurrencyBalance(self.base, Decimal(allowed_volume * -1)).amount,
                     self.quote: CurrencyBalance(self.quote, Decimal(allowed_volume * price)).amount}
 
-        trade = CurrencyTrade('sell', repr(self), Decimal(allowed_volume * -1), price, capped)
+        trade = CurrencyTrade('sell', repr(self), Decimal(allowed_volume * -1), price, fill_ratio)
         return balances, trade
 
     def buy_currency(self, currency: str, volume: Decimal, quote: ForexQuote, illimited_volume: bool = False) -> Tuple[
@@ -426,7 +420,7 @@ class ArbitrageStrategy(object):
         if self.quotes_valid:
             balances_df, trades_df = self.apply_arbitrage(initial_amount, illimited_volume=illimited_volume)
             balances_by_currency = balances_df.sum(axis=1)
-            if not skip_capped or trades_df['capped'].count() == 0:
+            if not skip_capped or trades_df[trades_df['fill_ratio'] < 1].count() == 0:
                 logging.info('adding new opportunity:\n{}'.format(trades_df))
                 logging.info('resulting balances:\n{}'.format(balances_by_currency))
                 opportunity = trades_df.to_dict(orient='records'), balances_by_currency.to_dict()
