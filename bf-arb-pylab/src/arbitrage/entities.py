@@ -51,17 +51,58 @@ class PriceVolume(object):
         return not self == other
 
 
-class CurrencyTrade(NamedTuple):
-    direction: str
-    pair: str
-    quantity: Decimal
-    price: Decimal
-    fill_ratio: float
+class CurrencyTrade(object):
+    """
+    Models a currency trade.
+    """
+
+    def __init__(self, direction: str, pair: str, quantity: Decimal, price: Decimal, fill_ratio: float):
+        self._direction = direction
+        self._pair = pair
+        self._quantity = quantity
+        self._price = price
+        self._fill_ratio = fill_ratio
+
+    @property
+    def direction(self) -> str:
+        return self._direction
+
+    @property
+    def pair(self) -> str:
+        return self._pair
+
+    @property
+    def quantity(self) -> Decimal:
+        return self._quantity
+
+    @property
+    def price(self) -> Decimal:
+        return self._price
+
+    @property
+    def fill_ratio(self) -> float:
+        return self._fill_ratio
+
+    def scale(self, factor: float):
+        self._quantity *= factor
+        self._fill_ratio *= factor
+
+    def as_dict(self):
+        return {
+            'direction': self.direction,
+            'pair': self.pair,
+            'quantity': self.quantity,
+            'price': self.price,
+            'fill_ratio': self.fill_ratio,
+        }
+
+    def __repr__(self):
+        return '[{}, {}, {}, {}, {}]'.format(self.direction, self. pair, self.quantity, self.price, self.fill_ratio)
 
 
 class CurrencyBalance(object):
     """
-    Model of a currency balance.
+    Models a currency balance.
     """
 
     def __init__(self, currency: str, amount: Decimal):
@@ -418,6 +459,7 @@ class ArbitrageStrategy(object):
         """
         opportunity = None, None
         if self.quotes_valid:
+            logging.info('strategy book: {}'.format(self.quotes))
             balances_df, trades_df = self.apply_arbitrage(illimited_volume=illimited_volume)
             balances_by_currency = balances_df.sum(axis=1)
             logging.info('adding new opportunity:\n{}'.format(trades_df))
@@ -446,6 +488,12 @@ class ArbitrageStrategy(object):
         balance_next, trade_next = self.indirect_pairs[1].sell(self.quotes[self.indirect_pairs[1]],
                                                                balance_initial[self.indirect_pairs[0].quote],
                                                                illimited_volume)
+        volume_adjustment = trade_next.fill_ratio
+        for currency in balance_initial:
+            balance_initial[currency] *= volume_adjustment
+
+        trade_initial.scale(volume_adjustment)
+
         logging.debug('balance step 2: {}'.format(balance_next))
         if self.direct_pair.base in balance_initial:
             settling_amount = balance_initial[self.direct_pair.base]
@@ -457,13 +505,24 @@ class ArbitrageStrategy(object):
             balance_final, trade_final = self.direct_pair.buy_currency(self.direct_pair.quote, abs(settling_amount),
                                                                        self.quotes[self.direct_pair], illimited_volume)
 
+        volume_adjustment = trade_final.fill_ratio
+        for currency in balance_initial:
+            balance_initial[currency] *= volume_adjustment
+
+        trade_initial.scale(volume_adjustment)
+
+        for currency in balance_next:
+            balance_next[currency] *= volume_adjustment
+
+        trade_next.scale(volume_adjustment)
+
         logging.debug('balance step 3: {}'.format(balance_final))
         balance1_series = pandas.Series(balance_initial, name='initial')
         balance2_series = pandas.Series(balance_next, name='next')
         balance3_series = pandas.Series(balance_final, name='final')
         balance_series = [balance1_series, balance2_series, balance3_series]
         balances_df = pandas.concat(balance_series, axis=1)
-        trades_df = pandas.DataFrame([trade_initial, trade_next, trade_final])
+        trades_df = pandas.DataFrame([trade_initial.as_dict(), trade_next.as_dict(), trade_final.as_dict()])
         return balances_df, trades_df
 
 
