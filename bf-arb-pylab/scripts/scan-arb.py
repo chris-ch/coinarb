@@ -6,7 +6,7 @@ from collections import defaultdict
 from decimal import Decimal
 from datetime import datetime
 
-from arbitrage import parse_strategy, parse_quote
+from arbitrage import parse_strategy, parse_quote_json
 
 
 def main(args):
@@ -32,10 +32,11 @@ def main(args):
                 continue
 
             logging.info('received update: {}'.format(line))
-            logging.info('strategy book: {}'.format(strategy.quotes))
-            pair, quote = parse_quote(line)
+            pair, quote = parse_quote_json(line)
             strategy.update_quote(pair, quote)
-            target_trades, target_balances = strategy.find_opportunity(illimited_volume=False, skip_capped=False)
+            logging.info('strategy book: {}'.format(strategy.quotes))
+            initial_amount = Decimal(args.amount)
+            target_trades, target_balances = strategy.find_opportunity(initial_amount, illimited_volume=False, skip_capped=False)
             if target_balances is None:
                 continue
 
@@ -65,6 +66,7 @@ if __name__ == '__main__':
     parser.add_argument('--strategy', type=str, help='strategy as a formatted string (for example: eth/btc,btc/usd,eth/usd')
     parser.add_argument('--replay', type=str, help='use recorded prices')
     parser.add_argument('--threshold', action='append', help='lower profit limit for given currency (ex: "USD:0.02")')
+    parser.add_argument('--amount', type=str, help='maximum amount for trading expressed in indirect pair 1 quoted currency', default=Decimal(1))
 
     args = parser.parse_args()
     main(args)

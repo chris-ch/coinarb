@@ -414,16 +414,17 @@ class ArbitrageStrategy(object):
 
         return is_valid
 
-    def find_opportunity(self, illimited_volume: bool, skip_capped: bool = True) -> Tuple[Any, Any]:
+    def find_opportunity(self, initial_amount: Decimal, illimited_volume: bool, skip_capped: bool = True) -> Tuple[Any, Any]:
         """
 
+        :param initial_amount: amount to be invested
         :param illimited_volume: emulates infinite liquidity
         :param skip_capped:
         :return:
         """
         opportunity = None, None
         if self.quotes_valid:
-            balances_df, trades_df = self.apply_arbitrage(illimited_volume)
+            balances_df, trades_df = self.apply_arbitrage(initial_amount, illimited_volume=illimited_volume)
             balances_by_currency = balances_df.sum(axis=1)
             if not skip_capped or trades_df['capped'].count() == 0:
                 logging.info('adding new opportunity:\n{}'.format(trades_df))
@@ -438,17 +439,17 @@ class ArbitrageStrategy(object):
 
         return opportunity
 
-    def apply_arbitrage(self, illimited_volume: bool) -> Tuple[Any, Any]:
+    def apply_arbitrage(self, initial_amount: Decimal, illimited_volume: bool) -> Tuple[Any, Any]:
         """
-
-        :param pair1:
-        :param pair2:
-        :param pair3:
+        Determines arbitrage operations:
+            - selling indirect pair 1
+            - selling indirect pair 2
+            - offsetting remaining balance
+        :param initial_amount:
         :param illimited_volume:
         :return:
         """
         logging.info('accumulating currency: {}'.format(self.direct_pair.quote))
-        initial_amount = Decimal(1)
         balance_initial, trade_initial = self.indirect_pairs[0].sell(self.quotes[self.indirect_pairs[0]],
                                                                      initial_amount, illimited_volume)
         logging.info('balance step 1: {}'.format(balance_initial))

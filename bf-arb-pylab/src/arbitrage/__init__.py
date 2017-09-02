@@ -89,7 +89,7 @@ def create_strategies(pairs: Iterable[CurrencyPair]) -> Generator[ArbitrageStrat
             continue
 
 
-def parse_quote(line: str) -> Tuple[CurrencyPair, ForexQuote]:
+def parse_quote_json(line: str) -> Tuple[CurrencyPair, ForexQuote]:
     """
 
     :param line:
@@ -102,3 +102,20 @@ def parse_quote(line: str) -> Tuple[CurrencyPair, ForexQuote]:
     quote = ForexQuote(timestamp=timestamp, bid=bid, ask=ask, source=data['source'])
     pair = parse_currency_pair(data['pair'], separator='/')
     return pair, quote
+
+
+def parse_quote(line: str) -> ForexQuote:
+    """
+
+    :param line: ex. '[2017-09-02 08:23:28.182842:31.99000001@0.000295/512.746409@0.000283]'
+    :return:
+    """
+    date_str = line[1:27]
+    bid_str, ask_str = line[28:-1].split('/')
+    bid_volume, bid_price = bid_str.split('@')
+    ask_volume, ask_price = ask_str.split('@')
+    timestamp = dateutil.parser.parse(date_str)
+    bid = PriceVolume(Decimal(bid_price), Decimal(bid_volume))
+    ask = PriceVolume(Decimal(ask_price), Decimal(ask_volume))
+    quote = ForexQuote(timestamp=timestamp, bid=bid, ask=ask, source='test')
+    return quote

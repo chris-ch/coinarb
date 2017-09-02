@@ -10,7 +10,8 @@ import itertools
 
 import requests_cache
 
-from arbitrage import parse_pair_from_indirect, create_strategies, parse_currency_pair, parse_strategy
+from arbitrage import parse_pair_from_indirect, create_strategies, parse_currency_pair, parse_strategy, \
+    parse_quote_json, parse_quote
 from arbitrage.entities import ForexQuote, ArbitrageStrategy, CurrencyPair, CurrencyConverter, PriceVolume, OrderBook
 
 
@@ -145,9 +146,11 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         strategy.update_quote(strategy.indirect_pairs[0], quote_eur_chf)
         strategy.update_quote(strategy.indirect_pairs[1], quote_chf_usd)
         self.assertTrue(strategy.quotes_valid)
-        balances, trades = strategy.apply_arbitrage(illimited_volume=True)
+        balances, trades = strategy.apply_arbitrage(initial_amount=Decimal(1), illimited_volume=True)
         self.assertAlmostEqual(balances['next'].loc['USD'], Decimal('1.185600'), places=6)
         self.assertAlmostEqual(balances['final'].loc['USD'], Decimal('-1.183432'), places=6)
+        self.assertAlmostEqual(balances.sum(axis=1).loc['EUR'], 0, places=6)
+        self.assertAlmostEqual(balances.sum(axis=1).loc['CHF'], 0, places=6)
 
     def test_arbitrage_2(self):
         bid = PriceVolume(Decimal('1.3392'), Decimal('17.30488026'))
@@ -168,9 +171,37 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         strategy.update_quote(strategy.indirect_pairs[0], quote_eos_btc)
         strategy.update_quote(strategy.indirect_pairs[1], quote_btc_usd)
         self.assertTrue(strategy.quotes_valid)
-        balances, trades = strategy.apply_arbitrage(illimited_volume=True)
+        balances, trades = strategy.apply_arbitrage(initial_amount=Decimal(1), illimited_volume=True)
         self.assertAlmostEqual(balances['next'].loc['USD'], Decimal('1.341526985'), places=10)
-        self.assertAlmostEqual(balances['final'].loc['USD'], Decimal('-1.3442'), places=4)
+        self.assertAlmostEqual(balances['final'].loc['USD'], Decimal('-1.3442'), places=6)
+        self.assertAlmostEqual(balances.sum(axis=1).loc['EOS'], Decimal(0), places=6)
+        self.assertAlmostEqual(balances.sum(axis=1).loc['BTC'], Decimal(0), places=6)
+
+    def test_arbitrage_3(self):
+        """
+
+        2017-09-02 10:23:28,183:root:INFO:EOSBTC: updated book [2017-09-02 08:23:28.182842:31.99000001@0.000295/512.746409@0.000283]
+        2017-09-02 10:23:34,280:root:INFO:BTCUSD: updated book [2017-09-02 08:23:34.280389:0.04@4697.2/0.78930193@4678.1]
+        2017-09-02 10:23:38,138:root:INFO:EOSUSD: updated book [2017-09-02 08:23:38.138004:111.05975657@1.3474/1.292293@1.3271]
+        :return:
+        """
+        quote_eos_usd = parse_quote('[2017-09-02 08:58:34.070218:973.63984846@1.3545/0.00000507@1.3299]')
+        quote_eos_btc = parse_quote('[2017-09-02 08:58:34.058197:200@0.00030111/175.83079355@0.0002858]')
+        quote_btc_usd = parse_quote('[2017-09-02 08:58:37.335723:4.46422@4704.1/0.0355573@4689.7]')
+        input = '<eos/usd>,<eos/btc>,<btc/usd>'
+        strategy = parse_strategy(input)
+        self.assertEqual(strategy.direct_pair, CurrencyPair('eos', 'usd'))
+        self.assertEqual(strategy.indirect_pairs[0], CurrencyPair('eos', 'btc'))
+        self.assertEqual(strategy.indirect_pairs[1], CurrencyPair('btc', 'usd'))
+        strategy.update_quote(strategy.direct_pair, quote_eos_usd)
+        strategy.update_quote(strategy.indirect_pairs[0], quote_eos_btc)
+        strategy.update_quote(strategy.indirect_pairs[1], quote_btc_usd)
+        self.assertTrue(strategy.quotes_valid)
+        balances, trades = strategy.apply_arbitrage(initial_amount=Decimal(100), illimited_volume=False)
+
+        self.assertAlmostEqual(balances.sum(axis=1).loc['BTC'], 0, places=10)
+        self.assertAlmostEqual(balances.sum(axis=1).loc['EOS'], -99.999995, places=6)
+        self.assertAlmostEqual(balances.sum(axis=1).loc['USD'], 141.645148, places=6)
 
     def test_orderbook(self):
         snapshot = ['75', [['0.0003346', '4', '37.62485165'], ['0.00033459', '1', '8730.72318672'], ['0.000333', '1', '350'],
