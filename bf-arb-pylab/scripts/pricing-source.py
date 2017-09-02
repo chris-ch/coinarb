@@ -108,7 +108,7 @@ def main(args):
             level_one_dict = level_one_quote.to_dict()
             level_one_dict['pair'] = pair[:len(pair) // 2] + '/' + pair[len(pair) // 2:]
             json_line = json.dumps(level_one_dict, cls=QuoteEncoder)
-            logging.info('{}: updated book {}'.format(pair, level_one_quote))
+            logging.debug('{}: updated book {}'.format(pair, level_one_quote))
             unbuffered_stdout.write(json_line.encode('utf-8'))
             unbuffered_stdout.write('\n'.encode('utf-8'))
 

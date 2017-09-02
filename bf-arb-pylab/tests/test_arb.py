@@ -146,9 +146,9 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         strategy.update_quote(strategy.indirect_pairs[0], quote_eur_chf)
         strategy.update_quote(strategy.indirect_pairs[1], quote_chf_usd)
         self.assertTrue(strategy.quotes_valid)
-        balances, trades = strategy.apply_arbitrage(initial_amount=Decimal(1), illimited_volume=True)
-        self.assertAlmostEqual(balances['next'].loc['USD'], Decimal('1.185600'), places=6)
-        self.assertAlmostEqual(balances['final'].loc['USD'], Decimal('-1.183432'), places=6)
+        balances, trades = strategy.apply_arbitrage(illimited_volume=True)
+        self.assertAlmostEqual(balances['next'].loc['USD'], Decimal('118.5600'), places=6)
+        self.assertAlmostEqual(balances['final'].loc['USD'], Decimal('-118.343195'), places=6)
         self.assertAlmostEqual(balances.sum(axis=1).loc['EUR'], 0, places=6)
         self.assertAlmostEqual(balances.sum(axis=1).loc['CHF'], 0, places=6)
 
@@ -171,9 +171,11 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         strategy.update_quote(strategy.indirect_pairs[0], quote_eos_btc)
         strategy.update_quote(strategy.indirect_pairs[1], quote_btc_usd)
         self.assertTrue(strategy.quotes_valid)
-        balances, trades = strategy.apply_arbitrage(initial_amount=Decimal(1), illimited_volume=True)
-        self.assertAlmostEqual(balances['next'].loc['USD'], Decimal('1.341526985'), places=10)
-        self.assertAlmostEqual(balances['final'].loc['USD'], Decimal('-1.3442'), places=6)
+        balances, trades = strategy.apply_arbitrage(illimited_volume=True)
+        self.assertAlmostEqual(balances['initial'].loc['BTC'], Decimal('0.00009649635'), places=10)
+        self.assertAlmostEqual(balances['next'].loc['USD'], Decimal('0.454777647915'), places=10)
+        self.assertAlmostEqual(balances['final'].loc['EOS'], Decimal('0.339'), places=6)
+        self.assertAlmostEqual(balances['final'].loc['USD'], Decimal('-0.4556838'), places=6)
         self.assertAlmostEqual(balances.sum(axis=1).loc['EOS'], Decimal(0), places=6)
         self.assertAlmostEqual(balances.sum(axis=1).loc['BTC'], Decimal(0), places=6)
 
@@ -197,11 +199,10 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         strategy.update_quote(strategy.indirect_pairs[0], quote_eos_btc)
         strategy.update_quote(strategy.indirect_pairs[1], quote_btc_usd)
         self.assertTrue(strategy.quotes_valid)
-        balances, trades = strategy.apply_arbitrage(initial_amount=Decimal(100), illimited_volume=False)
-
+        balances, trades = strategy.apply_arbitrage(illimited_volume=False)
         self.assertAlmostEqual(balances.sum(axis=1).loc['BTC'], 0, places=10)
-        self.assertAlmostEqual(balances.sum(axis=1).loc['EOS'], -99.999995, places=6)
-        self.assertAlmostEqual(balances.sum(axis=1).loc['USD'], 141.645148, places=6)
+        self.assertAlmostEqual(balances.sum(axis=1).loc['EOS'], -199.999995, places=6)
+        self.assertAlmostEqual(balances.sum(axis=1).loc['USD'], 283.290303, places=6)
 
     def test_orderbook(self):
         snapshot = ['75', [['0.0003346', '4', '37.62485165'], ['0.00033459', '1', '8730.72318672'], ['0.000333', '1', '350'],

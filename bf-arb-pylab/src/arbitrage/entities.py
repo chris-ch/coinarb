@@ -408,7 +408,7 @@ class ArbitrageStrategy(object):
 
         return is_valid
 
-    def find_opportunity(self, initial_amount: Decimal, illimited_volume: bool, skip_capped: bool = True) -> Tuple[Any, Any]:
+    def find_opportunity(self, illimited_volume: bool) -> Tuple[Any, Any]:
         """
 
         :param initial_amount: amount to be invested
@@ -418,32 +418,28 @@ class ArbitrageStrategy(object):
         """
         opportunity = None, None
         if self.quotes_valid:
-            balances_df, trades_df = self.apply_arbitrage(initial_amount, illimited_volume=illimited_volume)
+            balances_df, trades_df = self.apply_arbitrage(illimited_volume=illimited_volume)
             balances_by_currency = balances_df.sum(axis=1)
-            if not skip_capped or trades_df[trades_df['fill_ratio'] < 1].count() == 0:
-                logging.info('adding new opportunity:\n{}'.format(trades_df))
-                logging.info('resulting balances:\n{}'.format(balances_by_currency))
-                opportunity = trades_df.to_dict(orient='records'), balances_by_currency.to_dict()
-
-            else:
-                logging.info('no opportunity')
+            logging.info('adding new opportunity:\n{}'.format(trades_df))
+            logging.info('resulting balances:\n{}'.format(balances_by_currency))
+            opportunity = trades_df.to_dict(orient='records'), balances_by_currency.to_dict()
 
         else:
             logging.info('incomplete quotes')
 
         return opportunity
 
-    def apply_arbitrage(self, initial_amount: Decimal, illimited_volume: bool) -> Tuple[Any, Any]:
+    def apply_arbitrage(self, illimited_volume: bool) -> Tuple[Any, Any]:
         """
         Determines arbitrage operations:
             - selling indirect pair 1
             - selling indirect pair 2
             - offsetting remaining balance
-        :param initial_amount:
         :param illimited_volume:
         :return:
         """
         logging.info('accumulating currency: {}'.format(self.direct_pair.quote))
+        initial_amount = self.quotes[self.indirect_pairs[0]].bid.volume
         balance_initial, trade_initial = self.indirect_pairs[0].sell(self.quotes[self.indirect_pairs[0]],
                                                                      initial_amount, illimited_volume)
         logging.info('balance step 1: {}'.format(balance_initial))
@@ -651,6 +647,10 @@ class OrderBook(object):
         """
         :return:
         """
+        if len(self.quotes_bid) == 0 or len(self.quotes_ask) == 0:
+            logging.error('invalid state for quote: {} / {} for pair {}'.format(self.quotes_bid, self.quotes_ask, self.pair))
+            return ForexQuote(datetime.now(), source=self.source)
+
         best_bid = self.quotes_bid[0]
         best_ask = self.quotes_ask[0]
         timestamp = max(best_bid['timestamp'], best_ask['timestamp'])

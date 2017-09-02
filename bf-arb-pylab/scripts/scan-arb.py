@@ -35,8 +35,7 @@ def main(args):
             pair, quote = parse_quote_json(line)
             strategy.update_quote(pair, quote)
             logging.info('strategy book: {}'.format(strategy.quotes))
-            initial_amount = Decimal(args.amount)
-            target_trades, target_balances = strategy.find_opportunity(initial_amount, illimited_volume=False, skip_capped=False)
+            target_trades, target_balances = strategy.find_opportunity(illimited_volume=False)
             if target_balances is None:
                 continue
 
