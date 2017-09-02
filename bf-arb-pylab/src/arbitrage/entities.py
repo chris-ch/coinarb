@@ -117,6 +117,9 @@ class CurrencyBalance(object):
     def amount(self) -> Decimal:
         return self._amount
 
+    def scale(self, factor: float):
+        self._amount *= factor
+
     def __repr__(self):
         return '[{} {}]'.format(self.currency, self.amount)
 
@@ -128,6 +131,27 @@ class CurrencyBalance(object):
 
     def __ne__(self, other):
         return not self == other
+
+
+class CurrencyBalanceAggregate(object):
+    def __init__(self):
+        self._balances = dict()
+
+    def add_balance(self, currency: str, amount: Decimal):
+        self._balances[currency] = CurrencyBalance(currency, amount)
+
+    def scale(self, factor: float):
+        for currency in self._balances:
+            self._balances[currency].scale(factor)
+
+    def amount(self, currency) -> Decimal:
+        return self._balances[currency].amount
+
+    def as_dict(self):
+        return {currency: self._balances[currency].amount for currency in self._balances}
+
+    def assets(self):
+        return self._balances.keys()
 
 
 class ForexQuote(object):
@@ -196,8 +220,7 @@ class CurrencyPair(object):
         self._base_currency_code = base_currency_code.upper()
         self._quote_currency_code = quote_currency_code.upper()
 
-    def buy(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[Dict[str,
-                                                                                                    Decimal], CurrencyTrade]:
+    def buy(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[CurrencyBalanceAggregate, CurrencyTrade]:
         """
         Computes the balance after the buy has taken place.
         Example, provided volume is sufficient:
@@ -216,14 +239,13 @@ class CurrencyPair(object):
             allowed_volume = min(volume, quote.ask.volume)
 
         fill_ratio = allowed_volume / volume
-        balances = {self.base: CurrencyBalance(self.base, allowed_volume).amount,
-                    self.quote: CurrencyBalance(self.quote, Decimal(allowed_volume * price * -1)).amount
-                    }
+        balances = CurrencyBalanceAggregate()
+        balances.add_balance(self.base, allowed_volume)
+        balances.add_balance(self.quote, Decimal(allowed_volume * price * -1))
         trade = CurrencyTrade('buy', repr(self), allowed_volume, price, fill_ratio)
         return balances, trade
 
-    def sell(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[Dict[str,
-                                                                                                     Decimal], CurrencyTrade]:
+    def sell(self, quote: ForexQuote, volume: Decimal, illimited_volume: bool = False) -> Tuple[CurrencyBalanceAggregate, CurrencyTrade]:
         """
         Computes the balance after the sell has taken place.
         Example, provided volume is sufficient:
@@ -243,14 +265,14 @@ class CurrencyPair(object):
             allowed_volume = min(volume, quote.bid.volume)
 
         fill_ratio = allowed_volume / volume
-        balances = {self.base: CurrencyBalance(self.base, Decimal(allowed_volume * -1)).amount,
-                    self.quote: CurrencyBalance(self.quote, Decimal(allowed_volume * price)).amount}
-
+        balances = CurrencyBalanceAggregate()
+        balances.add_balance(self.base, Decimal(allowed_volume * -1))
+        balances.add_balance(self.quote, Decimal(allowed_volume * price))
         trade = CurrencyTrade('sell', repr(self), Decimal(allowed_volume * -1), price, fill_ratio)
         return balances, trade
 
     def buy_currency(self, currency: str, volume: Decimal, quote: ForexQuote, illimited_volume: bool = False) -> Tuple[
-        Dict[str, Decimal], CurrencyTrade]:
+        CurrencyBalanceAggregate, CurrencyTrade]:
         """
 
         :param currency: currency to buy
@@ -274,7 +296,7 @@ class CurrencyPair(object):
         return balances, performed_trade
 
     def sell_currency(self, currency: str, volume: Decimal, quote: ForexQuote, illimited_volume: bool = False) -> Tuple[
-        Dict[str, Decimal], CurrencyTrade]:
+        CurrencyBalanceAggregate, CurrencyTrade]:
         """
 
         :param currency:
@@ -306,12 +328,12 @@ class CurrencyPair(object):
 
         if amount >= 0:
             balances, trade = self.sell_currency(currency, amount, quote, illimited_volume=True)
-            amount = balances[destination_currency]
+            amount = balances.amount(destination_currency)
             return abs(amount)
 
         else:
             balances, trade = self.buy_currency(currency, abs(amount), quote, illimited_volume=True)
-            amount = balances[destination_currency]
+            amount = balances.amount(destination_currency)
             return abs(amount) * -1
 
     @property
@@ -486,40 +508,33 @@ class ArbitrageStrategy(object):
                                                                      initial_amount, illimited_volume)
         logging.debug('balance step 1: {}'.format(balance_initial))
         balance_next, trade_next = self.indirect_pairs[1].sell(self.quotes[self.indirect_pairs[1]],
-                                                               balance_initial[self.indirect_pairs[0].quote],
+                                                               balance_initial.amount(self.indirect_pairs[0].quote),
                                                                illimited_volume)
         volume_adjustment = trade_next.fill_ratio
-        for currency in balance_initial:
-            balance_initial[currency] *= volume_adjustment
-
+        balance_initial.scale(volume_adjustment)
         trade_initial.scale(volume_adjustment)
 
         logging.debug('balance step 2: {}'.format(balance_next))
-        if self.direct_pair.base in balance_initial:
-            settling_amount = balance_initial[self.direct_pair.base]
+        if self.direct_pair.base in balance_initial.assets():
+            settling_amount = balance_initial.amount(self.direct_pair.base)
             balance_final, trade_final = self.direct_pair.buy_currency(self.direct_pair.base, abs(settling_amount),
                                                                        self.quotes[self.direct_pair], illimited_volume)
 
         else:
-            settling_amount = balance_initial[self.direct_pair.quote]
+            settling_amount = balance_initial.amount(self.direct_pair.quote)
             balance_final, trade_final = self.direct_pair.buy_currency(self.direct_pair.quote, abs(settling_amount),
                                                                        self.quotes[self.direct_pair], illimited_volume)
 
         volume_adjustment = trade_final.fill_ratio
-        for currency in balance_initial:
-            balance_initial[currency] *= volume_adjustment
-
+        balance_initial.scale(volume_adjustment)
         trade_initial.scale(volume_adjustment)
-
-        for currency in balance_next:
-            balance_next[currency] *= volume_adjustment
-
+        balance_next.scale(volume_adjustment)
         trade_next.scale(volume_adjustment)
 
         logging.debug('balance step 3: {}'.format(balance_final))
-        balance1_series = pandas.Series(balance_initial, name='initial')
-        balance2_series = pandas.Series(balance_next, name='next')
-        balance3_series = pandas.Series(balance_final, name='final')
+        balance1_series = pandas.Series(balance_initial.as_dict(), name='initial')
+        balance2_series = pandas.Series(balance_next.as_dict(), name='next')
+        balance3_series = pandas.Series(balance_final.as_dict(), name='final')
         balance_series = [balance1_series, balance2_series, balance3_series]
         balances_df = pandas.concat(balance_series, axis=1)
         trades_df = pandas.DataFrame([trade_initial.as_dict(), trade_next.as_dict(), trade_final.as_dict()])

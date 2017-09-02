@@ -105,7 +105,7 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
 
         balance_sell_eur_chf, trade_sell_eur_chf = pair_eur_chf.sell(quote_eur_chf, Decimal(1000),
                                                                      illimited_volume=True)
-        balance_sell_chf_usd, trade_sell_chf_usd = pair_chf_usd.sell(quote_chf_usd, balance_sell_eur_chf['CHF'],
+        balance_sell_chf_usd, trade_sell_chf_usd = pair_chf_usd.sell(quote_chf_usd, balance_sell_eur_chf.amount('CHF'),
                                                                      illimited_volume=True)
         balance_buy_eur_usd, trade_buy_eur_usd = pair_eur_usd.buy_currency(pair_eur_chf.base, Decimal(1000),
                                                                            quote_eur_usd, illimited_volume=True)
@@ -120,12 +120,12 @@ class FindArbitrageOpportunitiesTestCase(unittest.TestCase):
         self.assertAlmostEqual(trade_sell_chf_usd.price, Decimal('1.04'), places=18)
         self.assertAlmostEqual(trade_buy_eur_usd.price, Decimal('1.18'), places=18)
 
-        self.assertAlmostEqual(balance_sell_eur_chf['EUR'], Decimal('-1000'), places=18)
-        self.assertAlmostEqual(balance_sell_eur_chf['CHF'], Decimal('1140'), places=18)
-        self.assertAlmostEqual(balance_sell_chf_usd['CHF'], Decimal('-1140'), places=18)
-        self.assertAlmostEqual(balance_sell_chf_usd['USD'], Decimal('1185.6'), places=18)
-        self.assertAlmostEqual(balance_buy_eur_usd['EUR'], Decimal('1000'), places=18)
-        self.assertAlmostEqual(balance_buy_eur_usd['USD'], Decimal('-1180'), places=18)
+        self.assertAlmostEqual(balance_sell_eur_chf.amount('EUR'), Decimal('-1000'), places=18)
+        self.assertAlmostEqual(balance_sell_eur_chf.amount('CHF'), Decimal('1140'), places=18)
+        self.assertAlmostEqual(balance_sell_chf_usd.amount('CHF'), Decimal('-1140'), places=18)
+        self.assertAlmostEqual(balance_sell_chf_usd.amount('USD'), Decimal('1185.6'), places=18)
+        self.assertAlmostEqual(balance_buy_eur_usd.amount('EUR'), Decimal('1000'), places=18)
+        self.assertAlmostEqual(balance_buy_eur_usd.amount('USD'), Decimal('-1180'), places=18)
 
     def test_arbitrage_1(self):
         bid = PriceVolume(Decimal('1.14'), Decimal(100))
