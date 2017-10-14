@@ -122,7 +122,7 @@ if __name__ == '__main__':
                                      )
     parser.add_argument('--config', type=str, help='configuration file', default='config.json')
     parser.add_argument('--secrets', type=str, help='configuration with secret connection data', default='secrets.json')
-    parser.add_argument('--bitfinex', type=str, help='list of pairs to subscribe to on bitfinex (for example: eth/btc,usd/eth,eos/etc)')
+    parser.add_argument('--bitfinex', type=str, help='list of pairs to subscribe to on bitfinex (for example: btcusd,eosbtc,eosusd)')
 
     args = parser.parse_args()
     main(args)
